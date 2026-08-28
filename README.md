@@ -1,1 +1,1 @@
-# lci-mcp
+# Lightbridge-code-intelligence Local MCP
