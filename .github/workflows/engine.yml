@@ -1,0 +1,53 @@
+name: Engine (Rust)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: engine-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-engine-core:
+    name: Test engine-core (unit + real-world integration)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            packages/engine-core
+            packages/engine
+
+      - name: Run engine-core test suite
+        working-directory: packages/engine-core
+        run: cargo test --locked
+
+  build-engine-addon:
+    name: Build engine N-API addon
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            packages/engine-core
+            packages/engine
+
+      - name: Compile native addon crate
+        working-directory: packages/engine
+        run: cargo build --locked

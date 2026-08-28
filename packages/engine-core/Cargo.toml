@@ -1,0 +1,32 @@
+[package]
+name = "lci-mcp-engine-core"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# Plain Rust, no N-API dependency. Keeping the native addon boundary (packages/engine) as a thin
+# wrapper over this crate is what makes the extraction/storage/query logic testable with a normal
+# `cargo test`, native-addon linking constraints aside.
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+# Pinned by exact commit, not a floating branch, until a versioned release exists.
+lci-codegraph = { git = "https://github.com/leghadjeu-christian/lci-codegraph.git", rev = "d601974" }
+
+rusqlite = { version = "0.40", features = ["bundled", "functions"] }
+sqlite-vec = "0.1"
+
+# vendored-libgit2: builds libgit2 from source instead of linking a system install, the same way
+# rusqlite's "bundled" feature above avoids needing a system SQLite.
+git2 = { version = "0.21", default-features = false, features = ["vendored-libgit2"] }
+blake3 = "1"
+uuid = { version = "1", features = ["v4"] }
+
+anyhow = "1"
+thiserror = "2"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
+tracing = "0.1"
+
+[dev-dependencies]
+tempfile = "3"

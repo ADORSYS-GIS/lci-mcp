@@ -1,0 +1,35 @@
+{
+  "name": "@vymalo/lightbridge-code-intelligence-mcp",
+  "version": "0.1.0",
+  "description": "Local-first MCP server giving coding agents repository-aware semantic and structural code retrieval.",
+  "type": "module",
+  "bin": {
+    "lightbridge-code-intelligence-mcp": "./dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsx src/cli.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:e2e": "vitest run --config vitest.e2e.config.ts",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@vymalo/lightbridge-code-intelligence-native": "workspace:*",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24",
+    "tsup": "^8.5.1",
+    "tsx": "^4.23.12",
+    "typescript": "^5",
+    "vitest": "^4.1.11"
+  },
+  "engines": {
+    "node": ">= 18"
+  }
+}

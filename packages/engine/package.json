@@ -1,0 +1,27 @@
+{
+  "name": "@vymalo/lightbridge-code-intelligence-native",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Code-intelligence engine (indexing, SQLite/sqlite-vec storage, graph + vector query services) — native N-API addon for @vymalo/lightbridge-code-intelligence-mcp.",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "scripts": {
+    "build": "napi build --platform --release"
+  },
+  "napi": {
+    "binaryName": "lci-mcp-engine",
+    "targets": [
+      "x86_64-unknown-linux-gnu",
+      "x86_64-apple-darwin",
+      "aarch64-apple-darwin",
+      "aarch64-unknown-linux-gnu",
+      "x86_64-pc-windows-msvc"
+    ]
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "^3.8.6"
+  },
+  "engines": {
+    "node": ">= 18"
+  }
+}
