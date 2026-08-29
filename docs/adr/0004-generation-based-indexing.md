@@ -15,7 +15,8 @@ progress" without ever leaving retrieval in a broken state?
 
 - A failed or interrupted rebuild must never destroy the last usable index
 - Concurrent readers must be able to query while a rebuild runs
-- Only one process should be allowed to build a new index for a given database at a time
+- Only one generation may be `BUILDING` for a given database at a time — regardless of how many
+  index calls originate from the same process or from different ones
 - Crash recovery must be automatic on the next process start, not a manual repair step
 
 ## Considered Options

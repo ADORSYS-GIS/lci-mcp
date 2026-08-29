@@ -46,12 +46,14 @@ pub fn current_lease(conn: &Connection) -> anyhow::Result<Option<LeaseInfo>> {
     Ok(lease)
 }
 
-/// Acquires the lease for `generation_id`, failing if a live (non-abandoned) lease is already held by
-/// a different owner. Overwrites an abandoned lease.
-pub fn acquire(conn: &Connection, generation_id: &str, owner_token: &str, owner_pid: i64) -> anyhow::Result<()> {
+/// Fails if a live (non-abandoned) lease is already held for a different generation or by a
+/// different owner. Only a caller re-acquiring the exact lease it already holds (same generation,
+/// same owner) or taking over an abandoned lease may proceed.
+pub fn ensure_acquirable(conn: &Connection, generation_id: &str, owner_token: &str) -> anyhow::Result<()> {
     let now = now_millis();
     if let Some(existing) = current_lease(conn)? {
-        if existing.owner_token != owner_token && !existing.is_abandoned(now) {
+        let is_same_holder = existing.generation_id == generation_id && existing.owner_token == owner_token;
+        if !is_same_holder && !existing.is_abandoned(now) {
             anyhow::bail!(
                 "an indexing lease is already held by pid {} for generation {} (heartbeat {}ms ago)",
                 existing.owner_pid,
@@ -60,6 +62,14 @@ pub fn acquire(conn: &Connection, generation_id: &str, owner_token: &str, owner_
             );
         }
     }
+    Ok(())
+}
+
+/// Acquires the lease for `generation_id`, failing under the same conditions as [`ensure_acquirable`].
+/// Overwrites an abandoned lease.
+pub fn acquire(conn: &Connection, generation_id: &str, owner_token: &str, owner_pid: i64) -> anyhow::Result<()> {
+    ensure_acquirable(conn, generation_id, owner_token)?;
+    let now = now_millis();
     conn.execute(
         "INSERT INTO index_lease (id, generation_id, owner_token, owner_pid, heartbeat_at) \
          VALUES (1, ?1, ?2, ?3, ?4) \
@@ -110,6 +120,17 @@ mod tests {
         seed_generation(&conn, "g1");
         acquire(&conn, "g1", "owner-a", 100).unwrap();
         let err = acquire(&conn, "g1", "owner-b", 200).unwrap_err();
+        assert!(err.to_string().contains("already held"));
+    }
+
+    #[test]
+    fn same_owner_cannot_acquire_a_live_lease_for_a_different_generation() {
+        let conn = Connection::open_in_memory().unwrap();
+        ensure_schema(&conn).unwrap();
+        seed_generation(&conn, "g1");
+        seed_generation(&conn, "g2");
+        acquire(&conn, "g1", "owner-a", 100).unwrap();
+        let err = acquire(&conn, "g2", "owner-a", 100).unwrap_err();
         assert!(err.to_string().contains("already held"));
     }
 

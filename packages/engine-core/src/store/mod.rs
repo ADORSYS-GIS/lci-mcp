@@ -95,6 +95,35 @@ impl SqliteStore {
         })
     }
 
+    /// Atomically checks that no other live lease is held, creates the new `BUILDING` generation, and
+    /// acquires the lease for it, all in one transaction — so two overlapping calls can't both observe
+    /// "no live lease" and race each other into existence.
+    #[allow(clippy::too_many_arguments)]
+    pub fn begin_generation(
+        &self,
+        id: &str,
+        head_sha: &str,
+        dirty: bool,
+        extractor_fingerprint: &str,
+        embedding_fingerprint: Option<&str>,
+        owner_token: &str,
+        owner_pid: i64,
+    ) -> anyhow::Result<()> {
+        self.with_conn(|conn| {
+            let tx = conn.unchecked_transaction()?;
+            crate::lease::ensure_acquirable(&tx, id, owner_token)?;
+            tx.execute(
+                "INSERT INTO index_generations \
+                    (id, state, created_at, head_sha, dirty, extractor_fingerprint, embedding_fingerprint) \
+                 VALUES (?1, 'BUILDING', ?2, ?3, ?4, ?5, ?6)",
+                params![id, crate::lease::now_millis(), head_sha, dirty as i64, extractor_fingerprint, embedding_fingerprint],
+            )?;
+            crate::lease::acquire(&tx, id, owner_token, owner_pid)?;
+            tx.commit()?;
+            Ok(())
+        })
+    }
+
     /// Atomically flips the previous `ACTIVE` generation to `OBSOLETE` (if any) and this one to
     /// `ACTIVE` — one transaction, so a reader never observes zero active generations.
     pub fn activate_generation(&self, id: &str) -> anyhow::Result<()> {

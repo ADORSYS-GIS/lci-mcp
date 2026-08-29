@@ -25,14 +25,15 @@ pub async fn begin_index(
     store.set_repository_metadata(&repo_info.repo_key, &repo_info.canonical_root.to_string_lossy(), repo_info.remote_identity.as_deref())?;
 
     let generation_id = Uuid::new_v4().to_string();
-    store.create_building_generation(
+    store.begin_generation(
         &generation_id,
         &repo_info.head_sha,
         repo_info.dirty,
         &extractor_fingerprint(),
         options.embedding_fingerprint.as_deref(),
+        owner_token,
+        std::process::id() as i64,
     )?;
-    store.with_conn(|conn| lease::acquire(conn, &generation_id, owner_token, std::process::id() as i64))?;
 
     // Create the vector table up front when the dimension is already known, so a read before the
     // first write still works.
@@ -305,6 +306,28 @@ mod tests {
         let s = status(&store, dir.path(), "db.sqlite").unwrap();
         assert_eq!(s.state, "failed");
         assert!(!s.usable);
+    }
+
+    #[tokio::test]
+    async fn a_second_begin_index_from_the_same_owner_is_rejected_while_the_first_is_still_building() {
+        let dir = fixture_repo();
+        let store = SqliteStore::open_in_memory().unwrap();
+        let options = StartIndexOptions { embedding_fingerprint: Some("fp".to_string()), embedding_dimensions: Some(2) };
+        let first = begin_index(&store, dir.path(), "owner-a", &options).await.unwrap();
+
+        let err = begin_index(&store, dir.path(), "owner-a", &options).await.unwrap_err();
+        assert!(err.to_string().contains("already held"));
+
+        // The rejected attempt must not leave a second generation stuck in BUILDING behind it.
+        let building = store.get_most_recent_generation_in_state("BUILDING").unwrap().unwrap();
+        assert_eq!(building.id, first.generation_id);
+
+        // The original generation is still committable once its embeddings arrive.
+        let batch = next_embedding_batch(&store, &first.generation_id, 100).unwrap();
+        let values: Vec<EmbeddingResult> = batch.iter().map(|b| EmbeddingResult { id: b.id, vector: vec![1.0, 0.0] }).collect();
+        put_embeddings(&store, &first.generation_id, &values, 2).unwrap();
+        commit_index(&store, &first.generation_id, "owner-a").unwrap();
+        assert!(store.get_active_generation().unwrap().is_some());
     }
 
     #[tokio::test]

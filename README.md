@@ -6,7 +6,7 @@ to find a symbol, walk callers/callees, explore a symbol's neighborhood, or sear
 No database server to install — everything is a single SQLite file next to the repository.
 
 > **Status:** early — the core index → search → graph-query loop works end to end (see
-> [`ARC42.md`](./ARC42.md) for the target architecture and [`docs/adr/`](./docs/adr) for the
+> [`docs/ARC42.md`](./docs/ARC42.md) for the target architecture and [`docs/adr/`](./docs/adr) for the
 > decisions made getting there), but packaging and release automation are not done yet.
 
 ## Quickstart
@@ -91,5 +91,5 @@ cd packages/server && pnpm dev --root /path/to/some/repo --stdio
 
 ## Documentation
 
-- [`ARC42.md`](./ARC42.md) — target architecture
+- [`docs/ARC42.md`](./docs/ARC42.md) — target architecture
 - [`docs/adr/`](./docs/adr) — architecture decision records, one per significant decision
