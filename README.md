@@ -26,7 +26,7 @@ optional embeddings endpoint, and only when `lci_search` needs one.
 ```mermaid
 flowchart TD
     AGENT["Coding agent<br/>(inside an MCP host — Claude Code, etc.)"]
-    AGENT -->|"MCP JSON-RPC over stdio"| SRV
+    AGENT -->|"MCP JSON-RPC over stdio"| PROC
 
     subgraph PROC["lci-mcp — one local process, no network listener"]
         direction TB
@@ -36,9 +36,9 @@ flowchart TD
         SRV --> ENG --> CORE
     end
 
-    CORE -->|"reads source files"| REPO[("Target repository<br/>on local disk")]
-    CORE -->|"reads / writes"| DB[("SQLite + sqlite-vec<br/>&lt;repoRoot&gt;/.lci/index.sqlite")]
-    SRV -.->|"POST /embeddings<br/>(optional — only when lci_search<br/>or embedding-backed indexing runs)"| EMB["Embeddings endpoint<br/>(OpenAI-compatible, optional)"]
+    PROC -->|"reads source files"| REPO[("Target repository<br/>on local disk")]
+    PROC -->|"reads / writes"| DB[("SQLite + sqlite-vec<br/>&lt;repoRoot&gt;/.lci/index.sqlite")]
+    PROC -.->|"POST /embeddings<br/>(optional — lci_search and<br/>embedding-backed indexing only)"| EMB["Embeddings endpoint<br/>(OpenAI-compatible, optional)"]
 ```
 
 Reading top to bottom: the agent only ever talks to the local process over stdio; everything below
