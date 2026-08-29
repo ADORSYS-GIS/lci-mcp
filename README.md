@@ -24,27 +24,26 @@ parsing and every SQLite read/write. The **only** outbound network call the tool
 optional embeddings endpoint, and only when `lci_search` needs one.
 
 ```mermaid
-flowchart LR
-    subgraph host["MCP host (Claude Code, etc.)"]
-        AGENT["coding agent"]
+flowchart TD
+    AGENT["Coding agent<br/>(inside an MCP host — Claude Code, etc.)"]
+    AGENT -->|"MCP JSON-RPC over stdio"| SRV
+
+    subgraph PROC["lci-mcp — one local process, no network listener"]
+        direction TB
+        SRV["packages/server (TypeScript)<br/>MCP tool handlers"]
+        ENG["packages/engine (Rust)<br/>native N-API addon"]
+        CORE["packages/engine-core (Rust)<br/>extraction · storage · queries"]
+        SRV --> ENG --> CORE
     end
 
-    subgraph proc["lci-mcp — one local process, stdio only"]
-        SRV["packages/server<br/>TypeScript MCP tools"]
-        ENG["packages/engine<br/>native N-API addon"]
-        CORE["packages/engine-core<br/>extraction · storage · queries"]
-        SRV -->|"napi calls"| ENG --> CORE
-    end
-
-    DB[("SQLite + sqlite-vec<br/>&lt;repoRoot&gt;/.lci/index.sqlite")]
-    REPO[("target repository<br/>on local disk")]
-    EMB["embeddings endpoint<br/>(OpenAI-compatible, optional)"]
-
-    AGENT <-->|"MCP JSON-RPC over stdio"| SRV
-    CORE -->|"tree-sitter walk"| REPO
-    CORE <--> DB
-    SRV -.->|"POST /embeddings<br/>(lci_search + indexing only)"| EMB
+    CORE -->|"reads source files"| REPO[("Target repository<br/>on local disk")]
+    CORE -->|"reads / writes"| DB[("SQLite + sqlite-vec<br/>&lt;repoRoot&gt;/.lci/index.sqlite")]
+    SRV -.->|"POST /embeddings<br/>(optional — only when lci_search<br/>or embedding-backed indexing runs)"| EMB["Embeddings endpoint<br/>(OpenAI-compatible, optional)"]
 ```
+
+Reading top to bottom: the agent only ever talks to the local process over stdio; everything below
+that line — reading the repository, reading/writing the SQLite file, and the one optional outbound
+HTTP call — happens *inside* that single process, never as a separate service.
 
 ### Indexing flow
 
@@ -55,34 +54,24 @@ data is already queryable the moment it returns, while embeddings (if configured
 building in the background.
 
 ```mermaid
-flowchart LR
-    Start(["lci_index called"]) --> Inspect["inspect repo<br/>HEAD · dirty · repoKey"]
+flowchart TD
+    Start(["lci_index called"]) --> Inspect["Inspect repository<br/>HEAD sha · dirty flag · repoKey"]
+    Inspect --> Walk["Tree-sitter walk<br/>(lci-codegraph)"]
+    Walk --> Persist["Persist chunks + graph<br/>(one transaction)"]
+    Persist --> Correlate["Correlate chunks<br/>to graph nodes"]
+    Correlate --> HasEmb{"Embeddings<br/>configured?"}
 
-    subgraph P1["Phase 1 — structural indexing (synchronous)"]
-        direction LR
-        Inspect --> Walk["tree-sitter walk<br/>lci-codegraph"]
-        Walk --> Persist["persist chunks + graph<br/>one transaction"]
-        Persist --> Correlate["correlate chunks<br/>to graph nodes"]
-    end
+    HasEmb -- "No" --> CommitA["commitIndex"]
+    CommitA --> DoneA(["Returns: done"])
 
-    Correlate --> HasEmb{"embedding.baseUrl<br/>configured?"}
-
-    HasEmb -- "no" --> CommitA["commitIndex"] --> DoneA(["state: done"])
-
-    HasEmb -- "yes" --> ReturnProg(["state: in_progress<br/>(structural data already queryable)"])
-
-    subgraph P2["Phase 2 — embedding (background, starts only after Phase 1 commits)"]
-        direction LR
-        ReturnProg --> Batch["nextEmbeddingBatch"]
-        Batch --> Empty{"batch<br/>empty?"}
-        Empty -- "no" --> Post["POST /embeddings<br/>(one batch)"] --> Put["putEmbeddings<br/>chunk_vectors"] --> Batch
-        Empty -- "yes, all chunks embedded" --> CommitB["commitIndex"]
-    end
-
+    HasEmb -- "Yes" --> ReturnProg(["Returns: in_progress<br/>(structural data already queryable)"])
+    ReturnProg --> Batch["Pull next batch of<br/>un-embedded chunks"]
+    Batch --> Empty{"Any chunks<br/>left?"}
+    Empty -- "Yes" --> Post["POST /embeddings<br/>(one request per batch)"]
+    Post --> Put["Store vectors<br/>in chunk_vectors"]
+    Put --> Batch
+    Empty -- "No" --> CommitB["commitIndex"]
     CommitB --> DoneB(["lci_index_status polls to done"])
-
-    style P1 fill:#1f2937,color:#e5e7eb,stroke:#4b5563
-    style P2 fill:#1e3a5f,color:#e5e7eb,stroke:#3b82f6
 ```
 
 A failed or in-flight reindex never disturbs the previous index — generations only ever swap over
