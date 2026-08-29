@@ -2,7 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-08-28
-- **Deciders:** leghadjeu-christian
+- **Deciders:** @leghadjeu-christian
 
 ## Context and Problem Statement
 
