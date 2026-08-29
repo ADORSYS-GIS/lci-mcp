@@ -86,10 +86,10 @@ CREATE INDEX IF NOT EXISTS ix_edges_source ON graph_edges(generation_id, source,
 CREATE INDEX IF NOT EXISTS ix_edges_target ON graph_edges(generation_id, target, relation);
 "#;
 
-/// `chunk_vectors` is created lazily, once the embedding dimension is known (Phase 3 / §4.2 note:
-/// a `vec0` table's dimension is fixed at CREATE time). Idempotent: re-running with the same
-/// dimension is a no-op via `IF NOT EXISTS`; a dimension *change* requires a fresh generation anyway
-/// since generations are immutable once BUILDING starts, so this never needs an ALTER path.
+/// `chunk_vectors` is created once the embedding dimension is known — a `vec0` table's dimension is
+/// fixed at CREATE time. Idempotent: re-running with the same dimension is a no-op via
+/// `IF NOT EXISTS`; a dimension *change* requires a fresh generation anyway since generations are
+/// immutable once BUILDING starts, so this never needs an ALTER path.
 pub fn ensure_vector_table(conn: &Connection, dimensions: u32) -> rusqlite::Result<()> {
     conn.execute(
         &format!(
