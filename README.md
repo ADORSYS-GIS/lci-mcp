@@ -55,41 +55,34 @@ data is already queryable the moment it returns, while embeddings (if configured
 building in the background.
 
 ```mermaid
-sequenceDiagram
-    participant Host as MCP host
-    participant Server as lci-mcp server (TS)
-    participant Engine as native engine (Rust)
-    participant DB as SQLite (+ sqlite-vec)
-    participant Emb as embeddings endpoint
+flowchart LR
+    Start(["lci_index called"]) --> Inspect["inspect repo<br/>HEAD · dirty · repoKey"]
 
-    Host->>Server: lci_index
-    Server->>Engine: beginIndex
-    Engine->>Engine: tree-sitter walk (lci-codegraph)
-    Engine->>DB: insert chunks + graph (one transaction)
-    Engine->>DB: correlate chunks to graph nodes
-    Engine-->>Server: generationId
-
-    alt no embedding.baseUrl configured
-        Server->>Engine: commitIndex
-        Engine->>DB: activate generation
-        Server-->>Host: state: done
-    else embedding.baseUrl configured
-        Server-->>Host: state: in_progress (structural data already queryable)
-        loop until every chunk has a vector
-            Server->>Engine: nextEmbeddingBatch
-            Engine->>DB: select chunks still needing a vector
-            Engine-->>Server: batch of chunk texts
-            Server->>Emb: POST /embeddings (one request per batch)
-            Emb-->>Server: vectors
-            Server->>Engine: putEmbeddings
-            Engine->>DB: insert into chunk_vectors
-        end
-        Server->>Engine: commitIndex
-        Engine->>DB: activate generation
+    subgraph P1["Phase 1 — structural indexing (synchronous)"]
+        direction LR
+        Inspect --> Walk["tree-sitter walk<br/>lci-codegraph"]
+        Walk --> Persist["persist chunks + graph<br/>one transaction"]
+        Persist --> Correlate["correlate chunks<br/>to graph nodes"]
     end
 
-    Host->>Server: lci_index_status (poll)
-    Server-->>Host: done
+    Correlate --> HasEmb{"embedding.baseUrl<br/>configured?"}
+
+    HasEmb -- "no" --> CommitA["commitIndex"] --> DoneA(["state: done"])
+
+    HasEmb -- "yes" --> ReturnProg(["state: in_progress<br/>(structural data already queryable)"])
+
+    subgraph P2["Phase 2 — embedding (background, starts only after Phase 1 commits)"]
+        direction LR
+        ReturnProg --> Batch["nextEmbeddingBatch"]
+        Batch --> Empty{"batch<br/>empty?"}
+        Empty -- "no" --> Post["POST /embeddings<br/>(one batch)"] --> Put["putEmbeddings<br/>chunk_vectors"] --> Batch
+        Empty -- "yes, all chunks embedded" --> CommitB["commitIndex"]
+    end
+
+    CommitB --> DoneB(["lci_index_status polls to done"])
+
+    style P1 fill:#1f2937,color:#e5e7eb,stroke:#4b5563
+    style P2 fill:#1e3a5f,color:#e5e7eb,stroke:#3b82f6
 ```
 
 A failed or in-flight reindex never disturbs the previous index — generations only ever swap over
