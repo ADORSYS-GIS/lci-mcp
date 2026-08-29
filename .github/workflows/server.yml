@@ -22,10 +22,6 @@ jobs:
 
       - name: Cache Cargo artifacts
         uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: |
-            packages/engine-core
-            packages/engine
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4

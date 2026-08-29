@@ -1,21 +1,21 @@
 [package]
 name = "lci-mcp-engine"
 version = "0.1.0"
-edition = "2021"
+edition.workspace = true
 publish = false
 
 [lib]
 crate-type = ["cdylib"]
 
 [dependencies]
-napi = { version = "3", default-features = false, features = ["napi4", "tokio_rt", "anyhow", "async"] }
-napi-derive = "3"
+napi.workspace = true
+napi-derive.workspace = true
 
 lci-mcp-engine-core = { path = "../engine-core" }
 
-anyhow = "1"
-uuid = { version = "1", features = ["v4"] }
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
+anyhow.workspace = true
+uuid.workspace = true
+tokio.workspace = true
 
 [build-dependencies]
-napi-build = "2"
+napi-build.workspace = true
