@@ -2,7 +2,7 @@
 
 - **Status:** Accepted — Implemented
 - **Date:** 2026-08-28
-- **Deciders:** project maintainers
+- **Deciders:** leghadjeu-christian
 - **Supersedes:** the original single-crate layout assumed by ADR-0001
 
 ## Context and Problem Statement
