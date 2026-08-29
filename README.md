@@ -92,6 +92,4 @@ cd packages/server && pnpm dev --root /path/to/some/repo --stdio
 ## Documentation
 
 - [`ARC42.md`](./ARC42.md) — target architecture
-- [`IMPLEMENTATION_PLAN.md`](./IMPLEMENTATION_PLAN.md) — phased build plan and design detail (schema,
-  query translations, module layout)
 - [`docs/adr/`](./docs/adr) — architecture decision records, one per significant decision
