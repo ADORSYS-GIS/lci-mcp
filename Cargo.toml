@@ -21,7 +21,7 @@ uuid = { version = "1", features = ["v4"] }
 blake3 = "1"
 
 # Pinned by exact commit, not a floating branch, until a versioned release exists.
-lci-codegraph = { git = "https://github.com/leghadjeu-christian/lci-codegraph.git", rev = "d601974" }
+lci-codegraph = { git = "https://github.com/ADORSYS-GIS/lci-codegraph.git", rev = "a283fee81c96be8509dc7d4f8e20450f31155a17" }
 
 rusqlite = { version = "0.40", features = ["bundled", "functions"] }
 sqlite-vec = "0.1"
