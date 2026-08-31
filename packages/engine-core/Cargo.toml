@@ -1,0 +1,28 @@
+[package]
+name = "lci-mcp-engine-core"
+version = "0.1.0"
+edition.workspace = true
+publish = false
+
+# Plain Rust, no N-API dependency. Keeping the native addon boundary (packages/engine) as a thin
+# wrapper over this crate is what makes the extraction/storage/query logic testable with a normal
+# `cargo test`, native-addon linking constraints aside.
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+lci-codegraph.workspace = true
+
+rusqlite.workspace = true
+sqlite-vec.workspace = true
+git2.workspace = true
+blake3.workspace = true
+uuid.workspace = true
+
+anyhow.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

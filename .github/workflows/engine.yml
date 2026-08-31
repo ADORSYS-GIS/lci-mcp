@@ -1,0 +1,45 @@
+name: Engine (Rust)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: engine-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-engine-core:
+    name: Test engine-core (unit + real-world integration)
+    runs-on: adorsys-gis-runner   # self-hosted runner
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run engine-core test suite
+        working-directory: packages/engine-core
+        run: cargo test --locked
+
+  build-engine-addon:
+    name: Build engine N-API addon
+    runs-on: adorsys-gis-runner   # self-hosted runner
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Compile native addon crate
+        working-directory: packages/engine
+        run: cargo build --locked

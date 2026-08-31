@@ -1,0 +1,36 @@
+# Workspace for the native indexing engine (packages/engine-core, packages/engine).
+[workspace]
+resolver = "3"
+members = [
+    "packages/engine-core",
+    "packages/engine",
+]
+
+[workspace.package]
+edition = "2024"
+
+# Single source of truth for every third-party version. Member crates declare deps as
+# `<crate>.workspace = true` (features are set here, not per-member) so a version bump happens in
+# exactly one place. Internal path deps (e.g. lci-mcp-engine-core) stay in the member manifests.
+[workspace.dependencies]
+anyhow = "1"
+thiserror = "2"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
+tracing = "0.1"
+uuid = { version = "1", features = ["v4"] }
+blake3 = "1"
+
+# Pinned by exact commit, not a floating branch, until a versioned release exists.
+lci-codegraph = { git = "https://github.com/ADORSYS-GIS/lci-codegraph.git", rev = "a283fee81c96be8509dc7d4f8e20450f31155a17" }
+
+rusqlite = { version = "0.40", features = ["bundled", "functions"] }
+sqlite-vec = "0.1"
+# vendored-libgit2: builds libgit2 from source instead of linking a system install, the same way
+# rusqlite's "bundled" feature above avoids needing a system SQLite.
+git2 = { version = "0.21", default-features = false, features = ["vendored-libgit2"] }
+
+napi = { version = "3", default-features = false, features = ["napi4", "tokio_rt", "anyhow", "async"] }
+napi-derive = "3"
+napi-build = "2"
+
+tempfile = "3"

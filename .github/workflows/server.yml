@@ -1,0 +1,59 @@
+name: MCP Server (TypeScript)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: server-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  typecheck-test-and-build:
+    name: Typecheck, test, and bundle the MCP CLI
+    runs-on: adorsys-gis-runner   # self-hosted runner
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Install Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint and format check (Biome)
+        run: pnpm lint
+
+      - name: Build native addon (required by MCP server tests)
+        working-directory: packages/engine
+        run: pnpm build
+
+      - name: Typecheck MCP server
+        working-directory: packages/server
+        run: pnpm typecheck
+
+      - name: Run unit tests
+        working-directory: packages/server
+        run: pnpm test
+
+      - name: Run end-to-end MCP protocol tests
+        working-directory: packages/server
+        run: pnpm test:e2e
+
+      - name: Bundle CLI
+        working-directory: packages/server
+        run: pnpm build

@@ -1,0 +1,19 @@
+node_modules/
+target/
+
+/packages/server/dist/
+
+# Platform binaries are published separately per target and never committed; the generated JS
+# loader and type definitions alongside them are committed.
+/packages/engine/*.node
+/packages/engine/npm/
+/packages/engine/node_modules/
+
+.lci/
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+
+.DS_Store
+*.log
