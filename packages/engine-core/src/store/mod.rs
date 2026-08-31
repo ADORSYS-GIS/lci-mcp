@@ -8,6 +8,8 @@ use std::sync::{Mutex, Once};
 
 use rusqlite::{params, Connection, OptionalExtension};
 
+use crate::error::EngineError;
+
 static REGISTER_VEC_EXTENSION: Once = Once::new();
 
 fn register_vector_extension() {
@@ -135,7 +137,7 @@ impl SqliteStore {
                 params![id, crate::lease::now_millis()],
             )?;
             if updated == 0 {
-                anyhow::bail!("cannot activate generation {id}: not in BUILDING state");
+                return Err(EngineError::ActivationRejected { generation_id: id.to_string() }.into());
             }
             tx.commit()?;
             Ok(())

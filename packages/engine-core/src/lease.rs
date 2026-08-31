@@ -3,6 +3,8 @@
 
 use rusqlite::{params, Connection, OptionalExtension};
 
+use crate::error::EngineError;
+
 pub const LEASE_TTL_MS: i64 = 30_000;
 /// The interval callers should heartbeat at — not read on the Rust side.
 #[allow(dead_code)]
@@ -54,12 +56,12 @@ pub fn ensure_acquirable(conn: &Connection, generation_id: &str, owner_token: &s
     if let Some(existing) = current_lease(conn)? {
         let is_same_holder = existing.generation_id == generation_id && existing.owner_token == owner_token;
         if !is_same_holder && !existing.is_abandoned(now) {
-            anyhow::bail!(
-                "an indexing lease is already held by pid {} for generation {} (heartbeat {}ms ago)",
-                existing.owner_pid,
-                existing.generation_id,
-                now - existing.heartbeat_at
-            );
+            return Err(EngineError::LeaseHeld {
+                owner_pid: existing.owner_pid,
+                generation_id: existing.generation_id,
+                heartbeat_ago_ms: now - existing.heartbeat_at,
+            }
+            .into());
         }
     }
     Ok(())
@@ -89,7 +91,7 @@ pub fn heartbeat(conn: &Connection, owner_token: &str) -> anyhow::Result<()> {
         params![now_millis(), owner_token],
     )?;
     if updated == 0 {
-        anyhow::bail!("cannot heartbeat: lease is no longer held by this owner (lost or expired)");
+        return Err(EngineError::LeaseLost.into());
     }
     Ok(())
 }
@@ -120,7 +122,7 @@ mod tests {
         seed_generation(&conn, "g1");
         acquire(&conn, "g1", "owner-a", 100).unwrap();
         let err = acquire(&conn, "g1", "owner-b", 200).unwrap_err();
-        assert!(err.to_string().contains("already held"));
+        assert!(matches!(err.downcast_ref::<EngineError>(), Some(EngineError::LeaseHeld { .. })));
     }
 
     #[test]
@@ -131,7 +133,7 @@ mod tests {
         seed_generation(&conn, "g2");
         acquire(&conn, "g1", "owner-a", 100).unwrap();
         let err = acquire(&conn, "g2", "owner-a", 100).unwrap_err();
-        assert!(err.to_string().contains("already held"));
+        assert!(matches!(err.downcast_ref::<EngineError>(), Some(EngineError::LeaseHeld { .. })));
     }
 
     #[test]
@@ -158,7 +160,7 @@ mod tests {
         seed_generation(&conn, "g1");
         acquire(&conn, "g1", "owner-a", 100).unwrap();
         let err = heartbeat(&conn, "owner-b").unwrap_err();
-        assert!(err.to_string().contains("no longer held"));
+        assert_eq!(err.downcast_ref::<EngineError>(), Some(&EngineError::LeaseLost));
     }
 
     #[test]

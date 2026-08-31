@@ -3,6 +3,7 @@
 //! boundary. See this crate's `Cargo.toml` for why that split exists.
 
 pub mod dto;
+pub mod error;
 pub mod extractor;
 pub mod index_coordinator;
 pub mod lease;
@@ -10,3 +11,4 @@ pub mod repository;
 pub mod store;
 
 pub use dto::*;
+pub use error::EngineError;

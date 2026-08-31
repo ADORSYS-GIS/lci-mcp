@@ -4,6 +4,7 @@
 use rusqlite::{params, Connection};
 
 use crate::dto::{SearchHit, SearchInput};
+use crate::error::EngineError;
 
 fn vector_literal(vector: &[f64]) -> String {
     let parts: Vec<String> = vector.iter().map(|v| v.to_string()).collect();
@@ -19,10 +20,7 @@ pub fn put_embeddings(
     let mut stmt = conn.prepare("INSERT OR REPLACE INTO chunk_vectors (chunk_id, embedding) VALUES (?1, ?2)")?;
     for (chunk_id, vector) in values {
         if vector.len() != dimensions as usize {
-            anyhow::bail!(
-                "embedding dimension mismatch: generation expects {dimensions}, got {} for chunk {chunk_id}",
-                vector.len()
-            );
+            return Err(EngineError::DimensionMismatch { expected: dimensions, actual: vector.len(), chunk_id: *chunk_id }.into());
         }
         stmt.execute(params![chunk_id, vector_literal(vector)])?;
     }
@@ -136,6 +134,9 @@ mod tests {
         let conn = Connection::open_in_memory().unwrap();
         ensure_schema(&conn).unwrap();
         let err = put_embeddings(&conn, &[(1, vec![1.0, 2.0, 3.0])], 2).unwrap_err();
-        assert!(err.to_string().contains("dimension mismatch"));
+        assert_eq!(
+            err.downcast_ref::<EngineError>(),
+            Some(&EngineError::DimensionMismatch { expected: 2, actual: 3, chunk_id: 1 })
+        );
     }
 }

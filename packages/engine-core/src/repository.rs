@@ -27,10 +27,9 @@ fn normalize_remote(url: &str) -> Option<String> {
         rest.to_string()
     } else if let Some(rest) = without_git_suffix.strip_prefix("https://") {
         rest.to_string()
-    } else if let Some(rest) = without_git_suffix.strip_prefix("http://") {
-        rest.to_string()
     } else {
-        return None;
+        let rest = without_git_suffix.strip_prefix("http://")?;
+        rest.to_string()
     };
 
     let normalized = host_and_path.trim_matches('/').to_lowercase();

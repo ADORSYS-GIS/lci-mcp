@@ -4,6 +4,8 @@
 
 use rusqlite::Connection;
 
+use crate::error::EngineError;
+
 /// Ordered by version. Every statement in a migration file must be safe to re-run (`IF NOT EXISTS`
 /// etc.) — a migration that fails partway through never commits its version bump (see
 /// `ensure_schema`), so the next run retries the same file from scratch rather than resuming
@@ -42,11 +44,7 @@ pub fn ensure_schema(conn: &Connection) -> anyhow::Result<()> {
         .unwrap_or(0);
 
     if found_version > CURRENT_SCHEMA_VERSION {
-        anyhow::bail!(
-            "lci-mcp: database schema version {found_version} is incompatible with this build \
-             (expects {CURRENT_SCHEMA_VERSION}). Delete the database file and re-index, or \
-             downgrade lci-mcp to a version that supports schema {found_version}."
-        );
+        return Err(EngineError::IncompatibleSchema { found: found_version, expected: CURRENT_SCHEMA_VERSION }.into());
     }
 
     for (version, sql) in MIGRATIONS {
@@ -112,7 +110,10 @@ mod tests {
         ensure_schema(&conn).unwrap();
         conn.execute("UPDATE schema_metadata SET schema_version = 999", []).unwrap();
         let err = ensure_schema(&conn).unwrap_err();
-        assert!(err.to_string().contains("incompatible"));
+        assert_eq!(
+            err.downcast_ref::<EngineError>(),
+            Some(&EngineError::IncompatibleSchema { found: 999, expected: CURRENT_SCHEMA_VERSION })
+        );
     }
 
     #[test]

@@ -6,6 +6,7 @@ use std::path::Path;
 use uuid::Uuid;
 
 use crate::dto::{EmbeddingBatchItem, EmbeddingResult, IndexGenerationHandle, IndexStats, IndexStatus, RevisionInfo, StartIndexOptions};
+use crate::error::EngineError;
 use crate::store::SqliteStore;
 use crate::{extractor, lease, repository};
 
@@ -71,9 +72,9 @@ pub fn next_embedding_batch(store: &SqliteStore, generation_id: &str, limit: i64
 pub fn put_embeddings(store: &SqliteStore, generation_id: &str, values: &[EmbeddingResult], dimensions: i64) -> anyhow::Result<()> {
     let generation = store
         .get_generation(generation_id)?
-        .ok_or_else(|| anyhow::anyhow!("no such generation: {generation_id}"))?;
+        .ok_or_else(|| EngineError::NoSuchGeneration(generation_id.to_string()))?;
     if generation.state != "BUILDING" {
-        anyhow::bail!("cannot accept embeddings for generation {generation_id}: state is {}", generation.state);
+        return Err(EngineError::NotBuilding { generation_id: generation_id.to_string(), state: generation.state }.into());
     }
     let pairs: Vec<(i64, Vec<f64>)> = values.iter().map(|v| (v.id, v.vector.clone())).collect();
     store.with_conn(|conn| crate::store::vectors::put_embeddings(conn, &pairs, dimensions as u32))
@@ -82,12 +83,12 @@ pub fn put_embeddings(store: &SqliteStore, generation_id: &str, values: &[Embedd
 pub fn commit_index(store: &SqliteStore, generation_id: &str, owner_token: &str) -> anyhow::Result<()> {
     let generation = store
         .get_generation(generation_id)?
-        .ok_or_else(|| anyhow::anyhow!("no such generation: {generation_id}"))?;
+        .ok_or_else(|| EngineError::NoSuchGeneration(generation_id.to_string()))?;
 
     if generation.embedding_fingerprint.is_some() {
         let pending = store.with_conn(|conn| crate::store::chunks::all_chunk_ids_needing_embeddings(conn, generation_id))?;
         if pending > 0 {
-            anyhow::bail!("cannot commit generation {generation_id}: {pending} chunks still have no embedding");
+            return Err(EngineError::EmbeddingsIncomplete { generation_id: generation_id.to_string(), pending }.into());
         }
     }
 
@@ -316,7 +317,7 @@ mod tests {
         let first = begin_index(&store, dir.path(), "owner-a", &options).await.unwrap();
 
         let err = begin_index(&store, dir.path(), "owner-a", &options).await.unwrap_err();
-        assert!(err.to_string().contains("already held"));
+        assert!(matches!(err.downcast_ref::<EngineError>(), Some(EngineError::LeaseHeld { .. })));
 
         // The rejected attempt must not leave a second generation stuck in BUILDING behind it.
         let building = store.get_most_recent_generation_in_state("BUILDING").unwrap().unwrap();
@@ -337,6 +338,9 @@ mod tests {
         let options = StartIndexOptions { embedding_fingerprint: Some("fp".to_string()), embedding_dimensions: Some(2) };
         let handle = begin_index(&store, dir.path(), "owner-a", &options).await.unwrap();
         let err = commit_index(&store, &handle.generation_id, "owner-a").unwrap_err();
-        assert!(err.to_string().contains("still have no embedding"));
+        assert!(matches!(
+            err.downcast_ref::<EngineError>(),
+            Some(EngineError::EmbeddingsIncomplete { generation_id, .. }) if *generation_id == handle.generation_id
+        ));
     }
 }
