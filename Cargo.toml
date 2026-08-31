@@ -24,7 +24,8 @@ blake3 = "1"
 lci-codegraph = { git = "https://github.com/ADORSYS-GIS/lci-codegraph.git", rev = "a283fee81c96be8509dc7d4f8e20450f31155a17" }
 
 rusqlite = { version = "0.40", features = ["bundled", "functions"] }
-rusqlite_migration = "2"
+rusqlite_migration = { version = "2", features = ["from-directory"] }
+include_dir = "0.7"
 sqlite-vec = "0.1"
 # vendored-libgit2: builds libgit2 from source instead of linking a system install, the same way
 # rusqlite's "bundled" feature above avoids needing a system SQLite.

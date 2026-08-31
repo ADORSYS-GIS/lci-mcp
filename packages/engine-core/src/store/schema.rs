@@ -1,19 +1,27 @@
-//! Migration entry point. `packages/engine-core/migrations/*.sql` are the actual schema DDL,
-//! embedded into the compiled binary at build time (there's no filesystem to read from once this
-//! ships as a native addon) and applied forward, atomically, by `rusqlite_migration` — which tracks
-//! the applied version in SQLite's own `user_version` field rather than a table of our own.
+//! Migration entry point. `packages/engine-core/migrations/` holds one subdirectory per schema
+//! version (`<id>-<name>/up.sql`), embedded into the compiled binary at build time (there's no
+//! filesystem to read from once this ships as a native addon) and applied forward, atomically, by
+//! `rusqlite_migration` — which tracks the applied version in SQLite's own `user_version` field
+//! rather than a table of our own. A future schema change is a new `migrations/<next-id>-<name>/`
+//! directory; nothing in this file needs to change to pick it up.
 
+use std::sync::LazyLock;
+
+use include_dir::{include_dir, Dir};
 use rusqlite::Connection;
-use rusqlite_migration::{Migrations, M};
+use rusqlite_migration::Migrations;
 
 use crate::error::EngineError;
 
-const MIGRATION_STEPS: &[M<'_>] = &[M::up(include_str!("../../migrations/0001_init.sql"))];
-const MIGRATIONS: Migrations<'_> = Migrations::from_slice(MIGRATION_STEPS);
+static MIGRATIONS_DIR: Dir = include_dir!("$CARGO_MANIFEST_DIR/migrations");
+static MIGRATIONS: LazyLock<Migrations<'static>> =
+    LazyLock::new(|| Migrations::from_directory(&MIGRATIONS_DIR).expect("embedded migrations must be well-formed"));
 
-/// The number of migrations in `MIGRATIONS`, kept in sync by a test below. `ensure_schema` refuses
-/// to open a database recorded ahead of this rather than silently reinterpreting it.
-pub const CURRENT_SCHEMA_VERSION: i64 = 1;
+/// The number of migrations found under `migrations/`. `ensure_schema` refuses to open a database
+/// recorded ahead of this rather than silently reinterpreting it.
+pub(crate) fn current_schema_version() -> i64 {
+    MIGRATIONS_DIR.dirs().count() as i64
+}
 
 /// `chunk_vectors` is created once the embedding dimension is known — a `vec0` table's dimension is
 /// fixed at CREATE time. Idempotent: re-running with the same dimension is a no-op via
@@ -35,8 +43,9 @@ pub fn ensure_schema(conn: &mut Connection) -> anyhow::Result<()> {
     conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000; PRAGMA foreign_keys=ON;")?;
 
     let found_version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
-    if found_version > CURRENT_SCHEMA_VERSION {
-        return Err(EngineError::IncompatibleSchema { found: found_version, expected: CURRENT_SCHEMA_VERSION }.into());
+    let expected = current_schema_version();
+    if found_version > expected {
+        return Err(EngineError::IncompatibleSchema { found: found_version, expected }.into());
     }
 
     MIGRATIONS.to_latest(conn)?;
@@ -52,7 +61,7 @@ mod tests {
         let mut conn = Connection::open_in_memory().unwrap();
         ensure_schema(&mut conn).unwrap();
         let v: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(v, CURRENT_SCHEMA_VERSION);
+        assert_eq!(v, current_schema_version());
     }
 
     #[test]
@@ -69,13 +78,14 @@ mod tests {
         conn.pragma_update(None, "user_version", 0).unwrap();
         ensure_schema(&mut conn).unwrap();
         let v: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(v, CURRENT_SCHEMA_VERSION);
+        assert_eq!(v, current_schema_version());
     }
 
+    /// Mirrors what `rusqlite_migration`'s own `from-directory` example tests: that the embedded
+    /// `migrations/` tree is well-formed (consecutive ids, a readable `up.sql` in each directory).
     #[test]
-    fn current_schema_version_matches_the_migration_count() {
-        let conn = Connection::open_in_memory().unwrap();
-        assert_eq!(MIGRATIONS.pending_migrations(&conn).unwrap() as i64, CURRENT_SCHEMA_VERSION);
+    fn embedded_migrations_are_well_formed() {
+        MIGRATIONS.validate().unwrap();
     }
 
     #[test]
@@ -86,7 +96,7 @@ mod tests {
         let err = ensure_schema(&mut conn).unwrap_err();
         assert_eq!(
             err.downcast_ref::<EngineError>(),
-            Some(&EngineError::IncompatibleSchema { found: 999, expected: CURRENT_SCHEMA_VERSION })
+            Some(&EngineError::IncompatibleSchema { found: 999, expected: current_schema_version() })
         );
     }
 
