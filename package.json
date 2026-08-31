@@ -2,6 +2,7 @@
   "name": "lci-mcp-workspace",
   "version": "0.0.0",
   "private": true,
+  "packageManager": "pnpm@11.5.2",
   "scripts": {
     "build": "pnpm --filter @vymalo/lightbridge-code-intelligence-native build && pnpm --filter @vymalo/lightbridge-code-intelligence-mcp build",
     "build:engine": "pnpm --filter @vymalo/lightbridge-code-intelligence-native build",
