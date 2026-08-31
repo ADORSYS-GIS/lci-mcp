@@ -112,8 +112,8 @@ mod tests {
 
     #[test]
     fn search_ranks_closest_vector_first_and_scores_are_similarity_not_distance() {
-        let conn = Connection::open_in_memory().unwrap();
-        ensure_schema(&conn).unwrap();
+        let mut conn = Connection::open_in_memory().unwrap();
+        ensure_schema(&mut conn).unwrap();
         conn.execute(
             "INSERT INTO index_generations (id, state, created_at, head_sha, dirty, extractor_fingerprint) \
              VALUES ('g1','ACTIVE',0,'sha',0,'fp')",
@@ -134,8 +134,8 @@ mod tests {
 
     #[test]
     fn search_finds_a_language_match_ranked_behind_several_closer_non_matches() {
-        let conn = Connection::open_in_memory().unwrap();
-        ensure_schema(&conn).unwrap();
+        let mut conn = Connection::open_in_memory().unwrap();
+        ensure_schema(&mut conn).unwrap();
         conn.execute(
             "INSERT INTO index_generations (id, state, created_at, head_sha, dirty, extractor_fingerprint) \
              VALUES ('g1','ACTIVE',0,'sha',0,'fp')",
@@ -159,8 +159,8 @@ mod tests {
 
     #[test]
     fn search_before_any_embeddings_returns_empty_not_error() {
-        let conn = Connection::open_in_memory().unwrap();
-        ensure_schema(&conn).unwrap();
+        let mut conn = Connection::open_in_memory().unwrap();
+        ensure_schema(&mut conn).unwrap();
         let input = SearchInput { vector: vec![1.0, 0.0], limit: None, path: None, language: None };
         let hits = search(&conn, "g1", &input).unwrap();
         assert!(hits.is_empty());
@@ -168,8 +168,8 @@ mod tests {
 
     #[test]
     fn dimension_mismatch_is_rejected_loudly() {
-        let conn = Connection::open_in_memory().unwrap();
-        ensure_schema(&conn).unwrap();
+        let mut conn = Connection::open_in_memory().unwrap();
+        ensure_schema(&mut conn).unwrap();
         let err = put_embeddings(&conn, &[(1, vec![1.0, 2.0, 3.0])], 2).unwrap_err();
         assert_eq!(
             err.downcast_ref::<EngineError>(),

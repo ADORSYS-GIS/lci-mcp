@@ -47,16 +47,16 @@ impl SqliteStore {
         if let Some(parent) = database_path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        let conn = Connection::open(database_path)?;
-        schema::ensure_schema(&conn)?;
+        let mut conn = Connection::open(database_path)?;
+        schema::ensure_schema(&mut conn)?;
         Ok(Self { conn: Mutex::new(conn) })
     }
 
     #[cfg(test)]
     pub fn open_in_memory() -> anyhow::Result<Self> {
         register_vector_extension();
-        let conn = Connection::open_in_memory()?;
-        schema::ensure_schema(&conn)?;
+        let mut conn = Connection::open_in_memory()?;
+        schema::ensure_schema(&mut conn)?;
         Ok(Self { conn: Mutex::new(conn) })
     }
 
