@@ -1,5 +1,4 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { z } from "zod";
 
 import type { AppContext } from "../context.js";
 import { startBackgroundIndexJob } from "../indexingJob.js";
@@ -13,8 +12,10 @@ export function registerIndexTool(server: McpServer, ctx: AppContext): void {
       description:
         "Indexes or reindexes the current repository. Returns once structural extraction completes; " +
         "if embeddings are configured, they continue building in the background — poll lci_index_status " +
-        "for completion. Never destroys the previously active index on failure.",
-      inputSchema: { force: z.boolean().optional().default(false) },
+        "for completion. Never destroys the previously active index on failure. Rejected while a " +
+        "previous call from this process is still building — poll lci_index_status and retry once it " +
+        "reports done.",
+      inputSchema: {},
     },
     async () => {
       const embeddingFingerprint = ctx.embeddingClient

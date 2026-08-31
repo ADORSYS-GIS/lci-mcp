@@ -33,14 +33,6 @@ CREATE TABLE IF NOT EXISTS index_lease (
     heartbeat_at INTEGER NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS files (
-    generation_id TEXT NOT NULL REFERENCES index_generations(id),
-    file_path TEXT NOT NULL,
-    language TEXT,
-    content_hash TEXT,
-    PRIMARY KEY (generation_id, file_path)
-);
-
 CREATE TABLE IF NOT EXISTS chunks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     generation_id TEXT NOT NULL REFERENCES index_generations(id),

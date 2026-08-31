@@ -43,6 +43,13 @@ pub fn search(conn: &Connection, generation_id: &str, input: &SearchInput) -> an
         return Ok(vec![]);
     }
 
+    // `k` bounds the nearest-neighbor scan sqlite-vec runs over the *whole* table, before the join's
+    // generation/path/language predicates narrow it down — so asking for exactly `limit` candidates
+    // can starve those predicates and return fewer rows than requested, or none, even when enough
+    // matches exist further down the similarity ranking. Requesting a larger candidate pool up front,
+    // then applying the predicates and trimming to `limit` at the end, is the standard mitigation.
+    let candidate_pool = (limit * 10).min(2000);
+
     let mut sql = String::from(
         "SELECT c.id, c.node_id, c.symbol_name, c.file_path, c.start_line, c.end_line, c.content, v.distance \
          FROM chunk_vectors v JOIN chunks c ON c.id = v.chunk_id \
@@ -51,17 +58,18 @@ pub fn search(conn: &Connection, generation_id: &str, input: &SearchInput) -> an
     let mut bind: Vec<Box<dyn rusqlite::ToSql>> = vec![
         Box::new(generation_id.to_string()),
         Box::new(vector_literal(&input.vector)),
-        Box::new(limit),
+        Box::new(candidate_pool),
     ];
     if let Some(path) = &input.path {
-        sql.push_str(" AND c.file_path LIKE '%' || ?4 || '%'");
+        sql.push_str(&format!(" AND c.file_path LIKE '%' || ?{} || '%'", bind.len() + 1));
         bind.push(Box::new(path.clone()));
     }
     if let Some(language) = &input.language {
         sql.push_str(&format!(" AND c.language = ?{}", bind.len() + 1));
         bind.push(Box::new(language.clone()));
     }
-    sql.push_str(" ORDER BY v.distance LIMIT ?3");
+    sql.push_str(&format!(" ORDER BY v.distance LIMIT ?{}", bind.len() + 1));
+    bind.push(Box::new(limit));
     let _ = dimensions;
 
     let mut stmt = conn.prepare(&sql)?;
@@ -90,10 +98,14 @@ mod tests {
     use crate::store::schema::ensure_schema;
 
     fn seed_chunk(conn: &Connection, id: i64, file: &str, content: &str) {
+        seed_chunk_with_language(conn, id, file, "rust", content);
+    }
+
+    fn seed_chunk_with_language(conn: &Connection, id: i64, file: &str, language: &str, content: &str) {
         conn.execute(
             "INSERT INTO chunks (id, generation_id, file_path, language, chunk_type, start_line, end_line, content, content_hash) \
-             VALUES (?1, 'g1', ?2, 'rust', 'function', 1, 2, ?3, 'h')",
-            params![id, file, content],
+             VALUES (?1, 'g1', ?2, ?3, 'function', 1, 2, ?4, 'h')",
+            params![id, file, language, content],
         )
         .unwrap();
     }
@@ -118,6 +130,31 @@ mod tests {
         assert_eq!(hits[0].file_path, "close.rs");
         assert!(hits[0].score > hits[1].score);
         assert!(hits[0].score > 0.9, "near-identical vectors must score near 1.0, got {}", hits[0].score);
+    }
+
+    #[test]
+    fn search_finds_a_language_match_ranked_behind_several_closer_non_matches() {
+        let conn = Connection::open_in_memory().unwrap();
+        ensure_schema(&conn).unwrap();
+        conn.execute(
+            "INSERT INTO index_generations (id, state, created_at, head_sha, dirty, extractor_fingerprint) \
+             VALUES ('g1','ACTIVE',0,'sha',0,'fp')",
+            [],
+        )
+        .unwrap();
+        for id in 1..=4 {
+            seed_chunk_with_language(&conn, id, &format!("closer{id}.py"), "python", "closer");
+        }
+        seed_chunk_with_language(&conn, 5, "match.rs", "rust", "match");
+
+        let mut embeddings: Vec<(i64, Vec<f64>)> = (1..=4).map(|id| (id, vec![1.0, 0.0])).collect();
+        embeddings.push((5, vec![0.9, 0.1]));
+        put_embeddings(&conn, &embeddings, 2).unwrap();
+
+        let input = SearchInput { vector: vec![1.0, 0.0], limit: Some(1), path: None, language: Some("rust".to_string()) };
+        let hits = search(&conn, "g1", &input).unwrap();
+        assert_eq!(hits.len(), 1, "the rust chunk must still surface despite ranking behind 4 closer python chunks");
+        assert_eq!(hits[0].file_path, "match.rs");
     }
 
     #[test]
