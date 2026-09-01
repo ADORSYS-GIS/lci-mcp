@@ -9,6 +9,13 @@
   "files": [
     "dist"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ADORSYS-GIS/lci-mcp.git",
+    "directory": "packages/server"
+  },
+  "homepage": "https://github.com/ADORSYS-GIS/lci-mcp#readme",
+  "bugs": "https://github.com/ADORSYS-GIS/lci-mcp/issues",
   "scripts": {
     "build": "tsup",
     "dev": "tsx src/cli.ts",
