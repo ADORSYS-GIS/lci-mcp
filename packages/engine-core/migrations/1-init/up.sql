@@ -1,8 +1,3 @@
-CREATE TABLE IF NOT EXISTS schema_metadata (
-    id INTEGER PRIMARY KEY CHECK (id = 1),
-    schema_version INTEGER NOT NULL
-);
-
 CREATE TABLE IF NOT EXISTS repository_metadata (
     id INTEGER PRIMARY KEY CHECK (id = 1),
     repo_key TEXT NOT NULL,

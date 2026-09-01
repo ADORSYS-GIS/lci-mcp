@@ -13,7 +13,7 @@ use crate::{extractor, lease, repository};
 /// Changes whenever schema or persistence logic changes, which is the only thing that can
 /// invalidate a previously-built index independent of the repository itself.
 fn extractor_fingerprint() -> String {
-    format!("schema={};engine={}", crate::store::schema::CURRENT_SCHEMA_VERSION, env!("CARGO_PKG_VERSION"))
+    format!("schema={};engine={}", crate::store::schema::current_schema_version(), env!("CARGO_PKG_VERSION"))
 }
 
 pub async fn begin_index(

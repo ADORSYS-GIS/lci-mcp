@@ -162,7 +162,7 @@ mod tests {
     use super::*;
     use crate::store::schema::ensure_schema;
 
-    fn seed(conn: &Connection) {
+    fn seed(conn: &mut Connection) {
         ensure_schema(conn).unwrap();
         conn.execute(
             "INSERT INTO index_generations (id, state, created_at, head_sha, dirty, extractor_fingerprint) \
@@ -194,8 +194,8 @@ mod tests {
 
     #[test]
     fn find_symbol_matches_case_insensitive_substring() {
-        let conn = Connection::open_in_memory().unwrap();
-        seed(&conn);
+        let mut conn = Connection::open_in_memory().unwrap();
+        seed(&mut conn);
         let hits = find_symbol(&conn, "g1", "B(", None).unwrap();
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].node_id, "b.rs#1:b");
@@ -203,8 +203,8 @@ mod tests {
 
     #[test]
     fn callers_and_callees_are_single_hop() {
-        let conn = Connection::open_in_memory().unwrap();
-        seed(&conn);
+        let mut conn = Connection::open_in_memory().unwrap();
+        seed(&mut conn);
         let callers = get_callers(&conn, "g1", "b.rs#1:b", None).unwrap();
         assert_eq!(callers.len(), 1);
         assert_eq!(callers[0].node_id, "a.rs#1:a");
@@ -216,8 +216,8 @@ mod tests {
 
     #[test]
     fn explore_symbol_terminates_on_a_cycle_and_dedups() {
-        let conn = Connection::open_in_memory().unwrap();
-        seed(&conn);
+        let mut conn = Connection::open_in_memory().unwrap();
+        seed(&mut conn);
         let result = explore_symbol(&conn, "g1", "a.rs#1:a", Some(3), Some(3), None).unwrap();
         // a, b, c reachable; d is isolated and must not appear.
         let ids: std::collections::BTreeSet<_> = result.nodes.iter().map(|n| n.node_id.as_str()).collect();
@@ -227,8 +227,8 @@ mod tests {
 
     #[test]
     fn explore_symbol_depth_zero_returns_only_the_origin() {
-        let conn = Connection::open_in_memory().unwrap();
-        seed(&conn);
+        let mut conn = Connection::open_in_memory().unwrap();
+        seed(&mut conn);
         let result = explore_symbol(&conn, "g1", "a.rs#1:a", Some(0), Some(0), None).unwrap();
         assert_eq!(result.nodes.len(), 1);
         assert_eq!(result.nodes[0].node_id, "a.rs#1:a");

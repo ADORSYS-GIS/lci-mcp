@@ -117,8 +117,8 @@ mod tests {
 
     #[test]
     fn second_owner_cannot_acquire_a_live_lease() {
-        let conn = Connection::open_in_memory().unwrap();
-        ensure_schema(&conn).unwrap();
+        let mut conn = Connection::open_in_memory().unwrap();
+        ensure_schema(&mut conn).unwrap();
         seed_generation(&conn, "g1");
         acquire(&conn, "g1", "owner-a", 100).unwrap();
         let err = acquire(&conn, "g1", "owner-b", 200).unwrap_err();
@@ -127,8 +127,8 @@ mod tests {
 
     #[test]
     fn same_owner_cannot_acquire_a_live_lease_for_a_different_generation() {
-        let conn = Connection::open_in_memory().unwrap();
-        ensure_schema(&conn).unwrap();
+        let mut conn = Connection::open_in_memory().unwrap();
+        ensure_schema(&mut conn).unwrap();
         seed_generation(&conn, "g1");
         seed_generation(&conn, "g2");
         acquire(&conn, "g1", "owner-a", 100).unwrap();
@@ -138,8 +138,8 @@ mod tests {
 
     #[test]
     fn abandoned_lease_can_be_taken_over() {
-        let conn = Connection::open_in_memory().unwrap();
-        ensure_schema(&conn).unwrap();
+        let mut conn = Connection::open_in_memory().unwrap();
+        ensure_schema(&mut conn).unwrap();
         seed_generation(&conn, "g1");
         acquire(&conn, "g1", "owner-a", 100).unwrap();
         // Force the heartbeat far enough into the past to count as abandoned.
@@ -155,8 +155,8 @@ mod tests {
 
     #[test]
     fn heartbeat_from_a_stale_owner_fails() {
-        let conn = Connection::open_in_memory().unwrap();
-        ensure_schema(&conn).unwrap();
+        let mut conn = Connection::open_in_memory().unwrap();
+        ensure_schema(&mut conn).unwrap();
         seed_generation(&conn, "g1");
         acquire(&conn, "g1", "owner-a", 100).unwrap();
         let err = heartbeat(&conn, "owner-b").unwrap_err();
@@ -165,8 +165,8 @@ mod tests {
 
     #[test]
     fn release_only_removes_the_matching_owners_lease() {
-        let conn = Connection::open_in_memory().unwrap();
-        ensure_schema(&conn).unwrap();
+        let mut conn = Connection::open_in_memory().unwrap();
+        ensure_schema(&mut conn).unwrap();
         seed_generation(&conn, "g1");
         acquire(&conn, "g1", "owner-a", 100).unwrap();
         release(&conn, "owner-wrong").unwrap();
