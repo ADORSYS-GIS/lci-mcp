@@ -1,10 +1,21 @@
 {
   "name": "@vymalo/lightbridge-code-intelligence-native",
   "version": "0.1.0",
-  "private": true,
   "description": "Code-intelligence engine (indexing, SQLite/sqlite-vec storage, graph + vector query services) — native N-API addon for @vymalo/lightbridge-code-intelligence-mcp.",
   "main": "index.js",
   "types": "index.d.ts",
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "*.node"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ADORSYS-GIS/lci-mcp.git",
+    "directory": "packages/engine"
+  },
+  "homepage": "https://github.com/ADORSYS-GIS/lci-mcp#readme",
+  "bugs": "https://github.com/ADORSYS-GIS/lci-mcp/issues",
   "scripts": {
     "build": "napi build --platform --release"
   },

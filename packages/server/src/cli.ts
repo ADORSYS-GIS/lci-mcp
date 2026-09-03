@@ -17,6 +17,7 @@ import { createServer } from "./mcp/server.js";
 // third-party arg-parser's own debug/verbose logging.
 interface Args {
   stdio: boolean;
+  help: boolean;
   root?: string;
   config?: string;
   configJson?: string;
@@ -28,11 +29,38 @@ interface Args {
   subcommand?: "config-show";
 }
 
+const HELP_TEXT = `lightbridge-code-intelligence-mcp — local-first MCP server for repository-aware code retrieval
+
+Usage:
+  lightbridge-code-intelligence-mcp --stdio [options]
+  lightbridge-code-intelligence-mcp config show [options]
+
+Options:
+  --stdio                        Start the MCP server on stdio (required to actually serve)
+  --root <path>                  Repository root to index (default: current directory)
+  --config <path>                Load a JSON config file
+  --config-json <json>           Inline JSON config, merged over --config
+  --log-level <level>            error | warn | info | debug | trace (default: info)
+  --embedding-base-url <url>     OpenAI-compatible embeddings endpoint (unset disables embeddings)
+  --embedding-model <name>       Embedding model name (default: text-embedding-3-small)
+  --embedding-dimensions <n>     Expected embedding vector size
+  --database <path>              Override the SQLite database path
+  -h, --help                     Show this help and exit
+
+Config resolution, lowest to highest precedence:
+  built-in defaults -> ~/.config/lci/config.json -> --config -> LCI_CONFIG_CONTENT env
+  -> --config-json -> the flags above
+`;
+
 function parseArgs(argv: string[]): Args {
-  const args: Args = { stdio: false };
+  const args: Args = { stdio: false, help: false };
   for (let i = 0; i < argv.length; i++) {
     const token = argv[i];
     switch (token) {
+      case "--help":
+      case "-h":
+        args.help = true;
+        break;
       case "--stdio":
         args.stdio = true;
         break;
@@ -94,6 +122,10 @@ function redactHelper(helper: AuthHelperConfig | undefined) {
 
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
+  if (args.help) {
+    process.stdout.write(HELP_TEXT);
+    return;
+  }
   const repoRoot = path.resolve(args.root ?? process.cwd());
   const config = loadConfig({
     configFile: args.config,
