@@ -31,7 +31,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Install zig (cross-compile toolchain for non-host targets)
-        uses: goto-bus-stop/setup-zig@v2
+        uses: mlugg/setup-zig@v2
 
       - name: Install pnpm
         uses: pnpm/action-setup@v6
