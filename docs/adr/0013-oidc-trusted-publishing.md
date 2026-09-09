@@ -67,7 +67,7 @@ the OIDC token exchange itself — GitHub only issues that token to an actual Ac
   elsewhere
 - Neutral, because each of the seven published packages (the two workspace packages plus five
   platform variants) needs its own Trusted Publisher configuration entered manually on npmjs.com —
-  org `ADORSYS-GIS`, repo `lci-mcp`, workflow filename `release.yml` (exactly, no path prefix) — this
+  org `ADORSYS-GIS`, repo `lci-mcp`, workflow filename `publish.yml` (exactly, no path prefix) — this
   is npmjs.com's own required format, not something this repository controls
 
 ## Pros and Cons of the Options
