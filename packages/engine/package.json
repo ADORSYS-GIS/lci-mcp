@@ -30,9 +30,9 @@
     ]
   },
   "devDependencies": {
-    "@napi-rs/cli": "^3.8.6"
+    "@napi-rs/cli": "^3.9.0"
   },
   "engines": {
-    "node": ">= 18"
+    "node": ">= 24"
   }
 }
