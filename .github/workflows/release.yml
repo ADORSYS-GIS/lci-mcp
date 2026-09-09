@@ -58,8 +58,8 @@ jobs:
 
       - name: Scaffold and populate per-platform npm packages
         working-directory: packages/engine
-        # --skip-optional-publish: publishing happens entirely in the separate `publish` job below,
-        # authenticated via OIDC rather than a long-lived token — this step only prepares files.
+        # --skip-optional-publish: the publish job downloads these packages and publishes them
+        # itself — this step only prepares files, it never publishes.
         run: |
           pnpm exec napi create-npm-dirs
           pnpm exec napi artifacts --output-dir .
@@ -103,7 +103,7 @@ jobs:
     needs: build
     runs-on: ubuntu-latest   # npm's OIDC trusted publishing does not support self-hosted runners
     permissions:
-      id-token: write   # required for npm's OIDC token exchange — no NPM_TOKEN anywhere in this job
+      id-token: write   # required for npm's OIDC token exchange
       contents: read
     steps:
       - name: Install Node.js
