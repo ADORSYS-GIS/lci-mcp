@@ -874,7 +874,7 @@ A future schema URL may be published for editor autocomplete and validation.
   },
 
   "storage": {
-    "database": "{{repoRoot}}/.lci/index.sqlite"
+    "database": "{{dataDir}}/lci-mcp/{{repoKey}}/index.sqlite"
   },
 
   "index": {
@@ -966,10 +966,25 @@ Initial variables:
 {{headSha}}
 {{shortHeadSha}}
 {{homeDir}}
+{{dataDir}}
 {{tmpDir}}
 ```
 
+`{{dataDir}}` resolves to the OS-conventional per-user application data directory: `XDG_DATA_HOME`
+(or its `~/.local/share` default) on Linux, `~/Library/Application Support` on macOS, and
+`%LOCALAPPDATA%` on Windows.
+
 Example default:
+
+```json
+{
+  "storage": {
+    "database": "{{dataDir}}/lci-mcp/{{repoKey}}/index.sqlite"
+  }
+}
+```
+
+Example repository-local location:
 
 ```json
 {
@@ -1312,6 +1327,9 @@ Required protections include:
 - validate database path after template expansion;
 - no implicit shell evaluation;
 - no secrets in CLI flags by default where environment/config references can be used;
+- always exclude common credential-bearing paths (`.ssh/`, `.aws/`, `.env`, and similar) from
+  extraction, regardless of the target repository's own `.gitignore`;
+- refuse to index a `--root` that resolves to a home directory or filesystem root;
 - no auth data in logs;
 - use parameterized SQL;
 - maintain SQLite schema migration integrity.
@@ -1624,7 +1642,7 @@ Example:
   },
 
   "database": {
-    "path": "/work/project/.lci/index.sqlite"
+    "path": "/home/dev/.local/share/lci-mcp/ca140fa3750dc352/index.sqlite"
   },
 
   "revision": {
