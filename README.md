@@ -153,7 +153,7 @@ for why the split exists.
 
 ## Development
 
-Prerequisites: Node ≥ 18, [pnpm](https://pnpm.io), and a Rust toolchain.
+Prerequisites: Node ≥ 24, [pnpm](https://pnpm.io), and a Rust toolchain.
 
 ```bash
 pnpm install

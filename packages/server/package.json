@@ -28,16 +28,16 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
     "@vymalo/lightbridge-code-intelligence-native": "workspace:*",
-    "zod": "^4.5.2"
+    "zod": "^4.5.4"
   },
   "devDependencies": {
-    "@types/node": "^26",
+    "@types/node": "^24.13.3",
     "tsup": "^8.5.1",
-    "tsx": "^4.23.12",
+    "tsx": "^4.23.13",
     "typescript": "^7.0.2",
-    "vitest": "^4.1.11"
+    "vitest": "^5.0.0"
   },
   "engines": {
-    "node": ">= 18"
+    "node": ">= 24"
   }
 }
