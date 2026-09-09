@@ -48,12 +48,40 @@ jobs:
       - name: Install workspace dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build every declared native target
+      - name: Build the Linux targets against a portable glibc baseline
+        working-directory: packages/engine
+        # napi-rs's own prebuilt cross toolchain (glibc 2.17) makes the Linux binaries installable on
+        # any distribution from the last decade or so, not just whatever glibc the build host has —
+        # the toolchain ships no zlib of its own, and its aarch64 compiler needs two C-standard flags
+        # it doesn't set by default.
+        env:
+          LIBZ_SYS_STATIC: "1"
+          CFLAGS_aarch64_unknown_linux_gnu: "-D__ARM_ARCH=8 -std=gnu99"
+        run: |
+          set -euo pipefail
+          for target in x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu; do
+            pnpm exec napi build --platform --release --target "$target" --use-napi-cross
+          done
+
+      - name: Verify the Linux builds stayed within the glibc baseline
         working-directory: packages/engine
         run: |
           set -euo pipefail
-          for target in x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu \
-                        x86_64-apple-darwin aarch64-apple-darwin x86_64-pc-windows-msvc; do
+          baseline="2.17"
+          for f in lci-mcp-engine.linux-x64-gnu.node lci-mcp-engine.linux-arm64-gnu.node; do
+            highest=$(objdump -T "$f" | grep -o 'GLIBC_[0-9.]*' | sed 's/GLIBC_//' | sort -V | tail -1)
+            echo "$f requires up to GLIBC_$highest"
+            if [ "$(printf '%s\n%s\n' "$baseline" "$highest" | sort -V | tail -1)" != "$baseline" ]; then
+              echo "::error::$f requires GLIBC_$highest, newer than the $baseline baseline"
+              exit 1
+            fi
+          done
+
+      - name: Build the remaining declared native targets
+        working-directory: packages/engine
+        run: |
+          set -euo pipefail
+          for target in x86_64-apple-darwin aarch64-apple-darwin x86_64-pc-windows-msvc; do
             pnpm exec napi build --platform --release --target "$target" --cross-compile
           done
 
