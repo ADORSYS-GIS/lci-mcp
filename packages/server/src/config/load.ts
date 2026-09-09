@@ -62,6 +62,25 @@ function parseJsonLayer(name: string, raw: string | undefined): ConfigLayer {
   }
 }
 
+/**
+ * A credential carried by a command-line argument is visible to every other process on the
+ * machine and lingers in shell history — a config *file* path or an environment variable are the
+ * only inputs meant to hold one. Layers built from process arguments are checked against this
+ * before they ever reach `resolveConfig`.
+ */
+export function rejectInlineCredential(layerName: string, value: unknown): void {
+  if (!isPlainObject(value)) return;
+  const auth = isPlainObject(value.embedding) ? value.embedding.auth : undefined;
+  const apiKey = isPlainObject(auth) ? auth.apiKey : undefined;
+  if (typeof apiKey === "string" && apiKey.length > 0) {
+    throw new Error(
+      `lci-mcp: embedding.auth.apiKey must not be set via ${layerName} — command-line arguments are visible to ` +
+        "other processes and shell history on this machine. Use --config <file> or the LCI_CONFIG_CONTENT " +
+        "environment variable instead.",
+    );
+  }
+}
+
 export interface LoadConfigArgs {
   configFile?: string;
   configJson?: string;
@@ -82,6 +101,7 @@ export function loadConfig(args: LoadConfigArgs): LciConfig {
   };
   const envContent = parseJsonLayer("env-content", process.env.LCI_CONFIG_CONTENT);
   const inlineJson = parseJsonLayer("inline-json", args.configJson);
+  rejectInlineCredential("--config-json", inlineJson.value);
 
   return resolveConfig([
     { name: "defaults", value: {} },

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { deepMergeReplacingArrays, resolveConfig } from "./load.js";
+import { deepMergeReplacingArrays, rejectInlineCredential, resolveConfig } from "./load.js";
 
 describe("deepMergeReplacingArrays", () => {
   it("deep-merges nested objects", () => {
@@ -41,7 +41,7 @@ describe("resolveConfig precedence", () => {
   it("every field gets its schema default when no layer sets it", () => {
     const config = resolveConfig([]);
     expect(config.embedding.batchSize).toBe(64);
-    expect(config.storage.database).toBe("{{repoRoot}}/.lci/index.sqlite");
+    expect(config.storage.database).toBe("{{dataDir}}/lci-mcp/{{repoKey}}/index.sqlite");
     expect(config.index.autoIndex).toBe(false);
     expect(config.logging.level).toBe("info");
   });
@@ -61,5 +61,27 @@ describe("resolveConfig precedence", () => {
       { name: "file", value: raw },
     ]);
     expect(fromEnvContent).toEqual(fromFile);
+  });
+});
+
+describe("rejectInlineCredential", () => {
+  it("throws when an embedding API key is present", () => {
+    expect(() => rejectInlineCredential("--config-json", { embedding: { auth: { apiKey: "sk-secret" } } })).toThrow(
+      /must not be set via --config-json/,
+    );
+  });
+
+  it("passes through a value with no embedding auth at all", () => {
+    expect(() => rejectInlineCredential("--config-json", { embedding: { model: "m" } })).not.toThrow();
+  });
+
+  it("passes through an auth helper (no api key) unmodified", () => {
+    expect(() =>
+      rejectInlineCredential("--config-json", { embedding: { auth: { helper: { command: "get-token" } } } }),
+    ).not.toThrow();
+  });
+
+  it("ignores a non-object value", () => {
+    expect(() => rejectInlineCredential("--config-json", undefined)).not.toThrow();
   });
 });

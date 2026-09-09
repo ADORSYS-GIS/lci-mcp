@@ -37,7 +37,7 @@ flowchart TD
     end
 
     PROC -->|"reads source files"| REPO[("Target repository<br/>on local disk")]
-    PROC -->|"reads / writes"| DB[("SQLite + sqlite-vec<br/>&lt;repoRoot&gt;/.lci/index.sqlite")]
+    PROC -->|"reads / writes"| DB[("SQLite + sqlite-vec<br/>per-user data dir, keyed by repoKey")]
     PROC -.->|"POST /embeddings<br/>(optional — lci_search and<br/>embedding-backed indexing only)"| EMB["Embeddings endpoint<br/>(OpenAI-compatible, optional)"]
 ```
 
@@ -98,6 +98,15 @@ Inspect the resolved configuration for the current repository without starting a
 npx @vymalo/lightbridge-code-intelligence-mcp config show
 ```
 
+### Safety defaults
+
+A `--root` that resolves to a home directory or filesystem root is refused outright, and common
+credential paths (`.ssh/`, `.aws/`, `.env`, and similar) are never extracted regardless of the
+target repository's own `.gitignore` — see
+[ADR-0012](./docs/adr/0012-index-and-storage-safety-boundaries.md). The database also lives outside
+whatever gets indexed by default, in a per-user OS-conventional data directory keyed by `repoKey`,
+not inside the repository itself.
+
 ### Configuration
 
 Configuration is one object, mergeable from a config file, an `LCI_CONFIG_CONTENT` environment
@@ -118,7 +127,9 @@ Semantic search needs an OpenAI-compatible embeddings endpoint:
 
 Without `embedding.baseUrl` configured, indexing still builds the structural graph — `lci_find_symbol`,
 `lci_get_callers`, `lci_get_callees`, and `lci_explore_symbol` all work; only `lci_search` needs
-embeddings.
+embeddings. `embedding.auth.apiKey` may come from a config file or `LCI_CONFIG_CONTENT`, never from
+`--config-json` — a command-line argument is visible to other processes and shell history, so that
+layer refuses a value carrying one.
 
 ## Repository layout
 

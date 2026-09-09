@@ -1,4 +1,6 @@
-import { rmSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { type FakeEmbeddingServer, startFakeEmbeddingServer } from "./support/fakeEmbeddingServer.js";
 import { createFixtureRepo } from "./support/fixtureRepo.js";
@@ -20,17 +22,24 @@ async function callTool(client: McpTestClient, name: string, args?: Record<strin
 
 describe("MCP stdio round trip against the real built CLI + engine", () => {
   let fixtureRoot: string;
+  let databaseRoot: string;
   let embeddingServer: FakeEmbeddingServer;
   let client: McpTestClient;
 
   beforeAll(async () => {
     fixtureRoot = createFixtureRepo();
+    // Kept separate from, and a sibling of, the fixture repo: the default database location lives
+    // outside whatever it indexes, and this suite's own storage should match that rather than
+    // depend on the repo-local layout the default deliberately moved away from.
+    databaseRoot = mkdtempSync(path.join(tmpdir(), "lci-mcp-e2e-db-"));
     embeddingServer = await startFakeEmbeddingServer(8);
     client = spawnCli(
       [
         "--stdio",
         "--root",
         fixtureRoot,
+        "--database",
+        path.join(databaseRoot, "index.sqlite"),
         "--embedding-base-url",
         embeddingServer.url,
         "--embedding-model",
@@ -56,6 +65,7 @@ describe("MCP stdio round trip against the real built CLI + engine", () => {
     await client.close();
     await embeddingServer.close();
     rmSync(fixtureRoot, { recursive: true, force: true });
+    rmSync(databaseRoot, { recursive: true, force: true });
   });
 
   it("lists all seven tools with schemas", async () => {

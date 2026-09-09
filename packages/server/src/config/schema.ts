@@ -24,7 +24,7 @@ export const EmbeddingConfigSchema = z.object({
 });
 
 export const StorageConfigSchema = z.object({
-  database: z.string().default("{{repoRoot}}/.lci/index.sqlite"),
+  database: z.string().default("{{dataDir}}/lci-mcp/{{repoKey}}/index.sqlite"),
 });
 
 export const IndexConfigSchema = z.object({

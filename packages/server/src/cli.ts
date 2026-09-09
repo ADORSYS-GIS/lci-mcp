@@ -11,6 +11,7 @@ import { EmbeddingClient } from "./embedding/client.js";
 import { CodeIndex } from "./engine.js";
 import { Logger } from "./logging.js";
 import { createServer } from "./mcp/server.js";
+import { isUnsafeIndexRoot } from "./rootSafety.js";
 
 // Appendix B's CLI surface, hand-parsed: the flag set is small enough that a dependency isn't
 // earning its keep, and this keeps secret-bearing flags impossible to accidentally leak through a
@@ -127,6 +128,13 @@ async function main(): Promise<void> {
     return;
   }
   const repoRoot = path.resolve(args.root ?? process.cwd());
+  if (isUnsafeIndexRoot(repoRoot)) {
+    process.stderr.write(
+      `lci-mcp: refusing to index "${repoRoot}" — it resolves to a home directory or filesystem root. Pass --root at a specific repository instead.\n`,
+    );
+    process.exitCode = 1;
+    return;
+  }
   const config = loadConfig({
     configFile: args.config,
     configJson: args.configJson,

@@ -1,4 +1,5 @@
 import { homedir, tmpdir } from "node:os";
+import path from "node:path";
 
 import { repositoryIdentity } from "../engine.js";
 
@@ -13,6 +14,19 @@ export interface TemplateContext {
   shortHeadSha: string;
   homeDir: string;
   tmpDir: string;
+  dataDir: string;
+}
+
+/** The OS-conventional per-user application data directory: `XDG_DATA_HOME` (or its `~/.local/share`
+ * default) on Linux, `~/Library/Application Support` on macOS, `%LOCALAPPDATA%` on Windows. */
+export function platformDataDir(): string {
+  if (process.platform === "win32") {
+    return process.env.LOCALAPPDATA ?? path.join(homedir(), "AppData", "Local");
+  }
+  if (process.platform === "darwin") {
+    return path.join(homedir(), "Library", "Application Support");
+  }
+  return process.env.XDG_DATA_HOME ?? path.join(homedir(), ".local", "share");
 }
 
 export async function buildTemplateContext(repoRoot: string): Promise<TemplateContext> {
@@ -26,6 +40,7 @@ export async function buildTemplateContext(repoRoot: string): Promise<TemplateCo
     shortHeadSha: identity.headSha.slice(0, 8),
     homeDir: homedir(),
     tmpDir: tmpdir(),
+    dataDir: platformDataDir(),
   };
 }
 

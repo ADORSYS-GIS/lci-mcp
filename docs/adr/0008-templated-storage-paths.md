@@ -27,10 +27,14 @@ from different working directories.
 ## Decision Outcome
 
 Chosen option: **a small template language**. The configured `storage.database` path may contain
-`{{repoRoot}}`, `{{repoName}}`, `{{repoKey}}`, `{{headSha}}`, `{{shortHeadSha}}`, `{{homeDir}}`, and
-`{{tmpDir}}`. The default expands to a repository-local path; an operator who wants a shared cache
-or per-commit database can express that directly in configuration. An unknown variable is a hard
-configuration error at expansion time.
+`{{repoRoot}}`, `{{repoName}}`, `{{repoKey}}`, `{{headSha}}`, `{{shortHeadSha}}`, `{{homeDir}}`,
+`{{dataDir}}`, and `{{tmpDir}}`. An operator who wants a repository-local, shared-cache, or
+per-commit database layout can express any of them directly in configuration. An unknown variable
+is a hard configuration error at expansion time.
+
+> The default itself moved from a repository-local path to `{{dataDir}}`-based one — see
+> [ADR-0012](./0012-index-and-storage-safety-boundaries.md). The templating mechanism described
+> here, and every variable except `{{dataDir}}`, is unchanged by that.
 
 ### Consequences
 
