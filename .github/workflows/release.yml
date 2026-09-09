@@ -1,0 +1,81 @@
+name: Release (npm)
+
+on:
+  push:
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Build every native target and publish
+    runs-on: adorsys-gis-runner   # self-hosted runner
+    permissions:
+      contents: write   # napi pre-publish creates a GitHub release and uploads binaries as assets
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: >-
+            x86_64-unknown-linux-gnu,
+            aarch64-unknown-linux-gnu,
+            x86_64-apple-darwin,
+            aarch64-apple-darwin,
+            x86_64-pc-windows-msvc
+
+      - name: Cache Cargo artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install zig (cross-compile toolchain for non-host targets)
+        uses: mlugg/setup-zig@v2
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Install Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build every declared native target
+        working-directory: packages/engine
+        run: |
+          set -euo pipefail
+          for target in x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu \
+                        x86_64-apple-darwin aarch64-apple-darwin x86_64-pc-windows-msvc; do
+            pnpm exec napi build --platform --release --target "$target" --cross-compile
+          done
+
+      - name: Scaffold and populate per-platform npm packages
+        working-directory: packages/engine
+        run: |
+          pnpm exec napi create-npm-dirs
+          pnpm exec napi artifacts --output-dir .
+          pnpm exec napi pre-publish
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Verify the native binding actually loads
+        working-directory: packages/server
+        run: pnpm smoke:native
+
+      - name: Build the MCP server bundle
+        working-directory: packages/server
+        run: pnpm build
+
+      - name: Publish every package
+        run: pnpm publish -r --no-git-checks
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
