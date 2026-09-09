@@ -22,6 +22,21 @@ pub async fn begin_index(
     owner_token: &str,
     options: &StartIndexOptions,
 ) -> anyhow::Result<IndexGenerationHandle> {
+    let handle = prepare_generation(store, repo_root, owner_token, options)?;
+    run_structural_extraction(store, repo_root, &handle.generation_id, owner_token).await?;
+    Ok(handle)
+}
+
+/// Creates the `BUILDING` generation row and acquires its lease — no file walk, returns as soon as
+/// the database says so. Callers that want the walk to run in the background rather than block on
+/// it call this directly, then run `run_structural_extraction` themselves without awaiting it
+/// inline (see `CodeIndex::begin_generation` in the napi crate).
+pub fn prepare_generation(
+    store: &SqliteStore,
+    repo_root: &Path,
+    owner_token: &str,
+    options: &StartIndexOptions,
+) -> anyhow::Result<IndexGenerationHandle> {
     let repo_info = repository::inspect(repo_root)?;
     store.set_repository_metadata(&repo_info.repo_key, &repo_info.canonical_root.to_string_lossy(), repo_info.remote_identity.as_deref())?;
 
@@ -42,14 +57,25 @@ pub async fn begin_index(
         store.with_conn(|conn| Ok(crate::store::schema::ensure_vector_table(conn, dimensions as u32)?))?;
     }
 
-    let outcome = extract_and_persist(store, repo_root, &generation_id).await;
+    Ok(IndexGenerationHandle { generation_id })
+}
+
+/// Runs the tree-sitter walk and persists its output into a generation already created by
+/// `prepare_generation`. A failure here marks the generation `FAILED` and releases its lease, the
+/// same recovery a failed embedding batch already gets — the previously `ACTIVE` generation is
+/// never touched either way.
+pub async fn run_structural_extraction(
+    store: &SqliteStore,
+    repo_root: &Path,
+    generation_id: &str,
+    owner_token: &str,
+) -> anyhow::Result<()> {
+    let outcome = extract_and_persist(store, repo_root, generation_id).await;
     if let Err(err) = &outcome {
-        store.fail_generation(&generation_id, &err.to_string())?;
+        store.fail_generation(generation_id, &err.to_string())?;
         store.with_conn(|conn| lease::release(conn, owner_token))?;
     }
-    outcome?;
-
-    Ok(IndexGenerationHandle { generation_id })
+    outcome
 }
 
 async fn extract_and_persist(store: &SqliteStore, repo_root: &Path, generation_id: &str) -> anyhow::Result<()> {
@@ -193,6 +219,57 @@ mod tests {
         fs::write(dir.path().join("a.rs"), "fn caller() { target(); }\n").unwrap();
         fs::write(dir.path().join("b.rs"), "fn target() {}\n").unwrap();
         dir
+    }
+
+    #[tokio::test]
+    async fn prepare_generation_returns_before_any_extraction_happens() {
+        let dir = fixture_repo();
+        let store = SqliteStore::open_in_memory().unwrap();
+        let handle = prepare_generation(&store, dir.path(), "owner-a", &StartIndexOptions::default()).unwrap();
+
+        // The BUILDING row and lease exist, but nothing has been extracted yet.
+        let generation = store.get_generation(&handle.generation_id).unwrap().unwrap();
+        assert_eq!(generation.state, "BUILDING");
+        let chunk_count = store
+            .with_conn(|conn| crate::store::chunks::count_chunks(conn, &handle.generation_id))
+            .unwrap();
+        assert_eq!(chunk_count, 0, "prepare_generation must not run the walk itself");
+    }
+
+    #[tokio::test]
+    async fn run_structural_extraction_persists_into_a_prepared_generation() {
+        let dir = fixture_repo();
+        let store = SqliteStore::open_in_memory().unwrap();
+        let handle = prepare_generation(&store, dir.path(), "owner-a", &StartIndexOptions::default()).unwrap();
+
+        run_structural_extraction(&store, dir.path(), &handle.generation_id, "owner-a").await.unwrap();
+
+        let chunk_count = store
+            .with_conn(|conn| crate::store::chunks::count_chunks(conn, &handle.generation_id))
+            .unwrap();
+        assert!(chunk_count > 0, "expected chunks after running the deferred extraction");
+        // Still BUILDING — running the extraction does not itself activate the generation.
+        let generation = store.get_generation(&handle.generation_id).unwrap().unwrap();
+        assert_eq!(generation.state, "BUILDING");
+    }
+
+    #[tokio::test]
+    async fn run_structural_extraction_failure_marks_the_generation_failed_and_releases_the_lease() {
+        let dir = fixture_repo();
+        let store = SqliteStore::open_in_memory().unwrap();
+        let handle = prepare_generation(&store, dir.path(), "owner-a", &StartIndexOptions::default()).unwrap();
+
+        // Sabotage persistence (rather than the walk itself, which tolerates unreadable paths) to
+        // force a deterministic failure partway through `extract_and_persist`.
+        store.with_conn(|conn| Ok(conn.execute("DROP TABLE chunks", [])?)).unwrap();
+
+        run_structural_extraction(&store, dir.path(), &handle.generation_id, "owner-a")
+            .await
+            .unwrap_err();
+
+        let generation = store.get_generation(&handle.generation_id).unwrap().unwrap();
+        assert_eq!(generation.state, "FAILED");
+        assert!(store.with_conn(lease::current_lease).unwrap().is_none());
     }
 
     #[tokio::test]
