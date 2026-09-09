@@ -47,8 +47,9 @@ after the build loop, asserting the binding actually loads before anything gets 
 - Bad, because cross-compiling C dependencies (`rusqlite`'s bundled SQLite, `git2`'s vendored
   libgit2) under `zig cc`/`cargo-xwin` hasn't been verified against this crate's actual dependency
   set yet — see [#5](https://github.com/ADORSYS-GIS/lci-mcp/issues/5) for the open verification work
-- Neutral, because publishing still needs an `NPM_TOKEN` secret added to the repo before the release
-  workflow can complete a real publish
+- Neutral, because publishing needs its own auth mechanism decided separately — see
+  [ADR-0013](./0013-oidc-trusted-publishing.md), which replaces the `NPM_TOKEN` this note originally
+  anticipated with OIDC trusted publishing instead
 
 ## Pros and Cons of the Options
 
