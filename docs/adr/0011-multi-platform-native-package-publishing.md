@@ -45,8 +45,13 @@ after the build loop, asserting the binding actually loads before anything gets 
 - Good, because the per-platform-package layout was already anticipated (`.gitignore` excludes
   `packages/engine/npm/` with a comment to that effect) — this just wires it up
 - Bad, because cross-compiling C dependencies (`rusqlite`'s bundled SQLite, `git2`'s vendored
-  libgit2) under `zig cc`/`cargo-xwin` hasn't been verified against this crate's actual dependency
-  set yet — see [#5](https://github.com/ADORSYS-GIS/lci-mcp/issues/5) for the open verification work
+  libgit2) under `zig cc`/`cargo-xwin` hasn't been fully verified against this crate's actual
+  dependency set yet — see [#5](https://github.com/ADORSYS-GIS/lci-mcp/issues/5). The Linux and
+  Windows targets build cleanly; the macOS targets are paused (not in `napi.targets`) because
+  `libgit2-sys`'s build script links `Security.framework`/`CoreFoundation.framework` unconditionally
+  for any Apple target, and `zig cc` cannot resolve real Apple frameworks without an actual macOS SDK
+  on `SDKROOT` — see [#14](https://github.com/ADORSYS-GIS/lci-mcp/issues/14) for the SDK-source
+  decision and the work to restore them
 - Neutral, because publishing needs its own auth mechanism decided separately — see
   [ADR-0013](./0013-oidc-trusted-publishing.md), which replaces the `NPM_TOKEN` this note originally
   anticipated with OIDC trusted publishing instead
