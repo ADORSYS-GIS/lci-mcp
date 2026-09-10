@@ -13,8 +13,6 @@ jobs:
   build:
     name: Build every native target and pack for publishing
     runs-on: adorsys-gis-runner   # self-hosted runner
-    permissions:
-      contents: write   # napi pre-publish creates a GitHub release and uploads binaries as assets
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -62,12 +60,12 @@ jobs:
         working-directory: packages/engine
         # --skip-optional-publish: the publish job downloads these packages and publishes them
         # itself — this step only prepares files, it never publishes.
+        # --no-gh-release: binaries reach users as npm optionalDependencies, not GitHub release
+        # assets, so no release needs creating here.
         run: |
           pnpm exec napi create-npm-dirs
           pnpm exec napi artifacts --output-dir .
-          pnpm exec napi pre-publish --skip-optional-publish
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          pnpm exec napi pre-publish --skip-optional-publish --no-gh-release
 
       - name: Verify the native binding actually loads
         working-directory: packages/server
