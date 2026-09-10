@@ -50,3 +50,4 @@ so a failed run never destroys the index that was already active. Full type defi
 - [Architecture](https://github.com/ADORSYS-GIS/lci-mcp/blob/main/docs/ARC42.md) and
   [decision records](https://github.com/ADORSYS-GIS/lci-mcp/tree/main/docs/adr)
 - [Issues](https://github.com/ADORSYS-GIS/lci-mcp/issues)
+- [MIT License](https://github.com/ADORSYS-GIS/lci-mcp/blob/main/LICENSE)

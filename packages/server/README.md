@@ -117,3 +117,4 @@ The server refuses to index a root that resolves to a home directory or a filesy
 - [Architecture](https://github.com/ADORSYS-GIS/lci-mcp/blob/main/docs/ARC42.md) and
   [decision records](https://github.com/ADORSYS-GIS/lci-mcp/tree/main/docs/adr)
 - [Issues](https://github.com/ADORSYS-GIS/lci-mcp/issues)
+- [MIT License](https://github.com/ADORSYS-GIS/lci-mcp/blob/main/LICENSE)
