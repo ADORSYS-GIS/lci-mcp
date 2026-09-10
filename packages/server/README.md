@@ -10,20 +10,42 @@ deploy, no daemon left running, and no database to install — the index is a si
 your user data directory. The only outbound network call the tool ever makes is to an optional
 embeddings endpoint, and only when semantic search needs one.
 
-## Install
+## Connect it to an MCP host
+
+There is nothing to install first — point your host at the package with `npx`, passing `--stdio` and
+the repository to index:
+
+```json
+{
+  "mcpServers": {
+    "lci": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@vymalo/lightbridge-code-intelligence-mcp",
+        "--stdio",
+        "--root",
+        "/path/to/your/repo"
+      ]
+    }
+  }
+}
+```
+
+Then call `lci_index` once. Structural queries work as soon as it returns.
+
+Requires Node.js 24 or newer. The Rust engine ships as a prebuilt native addon in
+[`@vymalo/lightbridge-code-intelligence-native`](https://www.npmjs.com/package/@vymalo/lightbridge-code-intelligence-native),
+fetched automatically. Prebuilt binaries currently cover **Linux x64 (glibc)** and
+**Linux arm64 (glibc)**.
+
+### Installing it instead
+
+To avoid re-resolving the package on every launch, install it and use the binary as the `command`:
 
 ```bash
 npm install -g @vymalo/lightbridge-code-intelligence-mcp
 ```
-
-Requires Node.js 24 or newer. The Rust engine ships as a prebuilt native addon in
-[`@vymalo/lightbridge-code-intelligence-native`](https://www.npmjs.com/package/@vymalo/lightbridge-code-intelligence-native),
-installed automatically. Prebuilt binaries currently cover **Linux x64 (glibc)** and
-**Linux arm64 (glibc)**.
-
-## Connect it to an MCP host
-
-Point your host at the binary with `--stdio` and the repository to index:
 
 ```json
 {
@@ -36,7 +58,9 @@ Point your host at the binary with `--stdio` and the repository to index:
 }
 ```
 
-Then call `lci_index` once. Structural queries work as soon as it returns.
+An MCP host launched from a desktop environment does not always inherit the `PATH` your shell has,
+so if the host reports that the command cannot be found, give the absolute path that
+`which lightbridge-code-intelligence-mcp` prints.
 
 ## Tools
 
