@@ -1,6 +1,6 @@
 {
   "name": "@vymalo/lightbridge-code-intelligence-native",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Code-intelligence engine (indexing, SQLite/sqlite-vec storage, graph + vector query services) — native N-API addon for @vymalo/lightbridge-code-intelligence-mcp.",
   "main": "index.js",
   "types": "index.d.ts",
