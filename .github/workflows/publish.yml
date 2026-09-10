@@ -47,6 +47,26 @@ jobs:
       - name: Install workspace dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Check the version being released
+        # Both packages publish together from this one job, and the server package's `workspace:*`
+        # dependency on the native one resolves to whatever version the native package carries at
+        # pack time, so a release where the two disagree publishes a server pinned to a version that
+        # may never have been published. A tag additionally has to name that same version, so every
+        # release on npm is traceable to the ref it was cut from.
+        run: |
+          set -euo pipefail
+          engine="$(node -p "require('./packages/engine/package.json').version")"
+          server="$(node -p "require('./packages/server/package.json').version")"
+          if [ "$engine" != "$server" ]; then
+            echo "::error::packages/engine is $engine but packages/server is $server — both publish together and must carry the same version"
+            exit 1
+          fi
+          if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "${GITHUB_REF_NAME#v}" != "$engine" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not name the packaged version $engine"
+            exit 1
+          fi
+          echo "releasing $engine"
+
       - name: Build every declared native target
         working-directory: packages/engine
         run: |
