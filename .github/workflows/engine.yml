@@ -12,7 +12,7 @@ concurrency:
 jobs:
   test-engine-core:
     name: Test engine-core (unit + real-world integration)
-    runs-on: adorsys-gis-runner   # self-hosted runner
+    runs-on: ubuntu-latest
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -29,7 +29,7 @@ jobs:
 
   build-engine-addon:
     name: Build engine N-API addon
-    runs-on: adorsys-gis-runner   # self-hosted runner
+    runs-on: ubuntu-latest
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
