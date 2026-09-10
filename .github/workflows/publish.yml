@@ -12,7 +12,7 @@ concurrency:
 jobs:
   build:
     name: Build every native target and pack for publishing
-    runs-on: adorsys-gis-runner   # self-hosted runner
+    runs-on: ubuntu-latest
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -110,7 +110,7 @@ jobs:
   publish:
     name: Publish to npm (OIDC trusted publishing)
     needs: build
-    runs-on: ubuntu-latest   # npm's OIDC trusted publishing does not support self-hosted runners
+    runs-on: ubuntu-latest
     permissions:
       id-token: write   # required for npm's OIDC token exchange
       contents: read
