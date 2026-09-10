@@ -73,7 +73,12 @@ jobs:
 
       - name: Build the MCP server bundle
         working-directory: packages/server
+        # packages/engine's optionalDependencies now name platform packages this is their first
+        # release for, so pnpm can't resolve them against the registry yet; CI=false lets pnpm
+        # install leniently around that instead of refusing to run at all.
         run: pnpm build
+        env:
+          CI: "false"
 
       - name: Pack every package into publishable tarballs
         # Grouped by publish order (platform packages, then the native package that optionally
@@ -82,6 +87,8 @@ jobs:
         # wrong. `pnpm pack` (not `npm pack`) for the two workspace packages is load-bearing: it
         # resolves their `workspace:*` dependency to a real version the way `npm publish` alone
         # cannot, since plain `npm` has no notion of that protocol.
+        # CI=false: same as the build step above, packages/engine's brand-new optional platform
+        # dependencies can't resolve against the registry yet.
         run: |
           set -euo pipefail
           mkdir -p dist-packages/platforms dist-packages/native dist-packages/server
@@ -90,6 +97,8 @@ jobs:
           done
           pnpm --filter @vymalo/lightbridge-code-intelligence-native pack --pack-destination dist-packages/native
           pnpm --filter @vymalo/lightbridge-code-intelligence-mcp pack --pack-destination dist-packages/server
+        env:
+          CI: "false"
 
       - name: Upload packed tarballs
         uses: actions/upload-artifact@v7
