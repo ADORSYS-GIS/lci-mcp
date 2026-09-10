@@ -130,7 +130,7 @@ async function main(): Promise<void> {
   const repoRoot = path.resolve(args.root ?? process.cwd());
   if (isUnsafeIndexRoot(repoRoot)) {
     process.stderr.write(
-      `lci-mcp: refusing to index "${repoRoot}" — it resolves to a home directory or filesystem root. Pass --root at a specific repository instead.\n`,
+      `lci-mcp: refusing to index "${repoRoot}" — it resolves to a filesystem root, your home directory, or a directory containing it. Pass --root at a specific repository instead.\n`,
     );
     process.exitCode = 1;
     return;
