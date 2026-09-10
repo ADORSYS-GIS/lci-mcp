@@ -56,6 +56,10 @@ jobs:
             pnpm exec napi build --platform --release --target "$target" --cross-compile
           done
 
+      - name: Verify the native binding actually loads
+        working-directory: packages/server
+        run: pnpm smoke:native
+
       - name: Scaffold and populate per-platform npm packages
         working-directory: packages/engine
         # --skip-optional-publish: the publish job downloads these packages and publishes them
@@ -66,10 +70,6 @@ jobs:
           pnpm exec napi create-npm-dirs
           pnpm exec napi artifacts --output-dir .
           pnpm exec napi pre-publish --skip-optional-publish --no-gh-release
-
-      - name: Verify the native binding actually loads
-        working-directory: packages/server
-        run: pnpm smoke:native
 
       - name: Build the MCP server bundle
         working-directory: packages/server
