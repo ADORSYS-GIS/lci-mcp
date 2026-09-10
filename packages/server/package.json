@@ -1,6 +1,6 @@
 {
   "name": "@vymalo/lightbridge-code-intelligence-mcp",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Local-first MCP server giving coding agents repository-aware semantic and structural code retrieval.",
   "license": "MIT",
   "type": "module",
