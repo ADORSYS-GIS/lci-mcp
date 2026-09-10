@@ -3,7 +3,8 @@
 export declare class CodeIndex {
   static open(options: OpenIndexOptions): Promise<CodeIndex>
   status(): Promise<IndexStatus>
-  beginIndex(options: StartIndexOptions): Promise<IndexGenerationHandle>
+  beginGeneration(options: StartIndexOptions): Promise<IndexGenerationHandle>
+  runStructuralExtraction(generationId: string): Promise<void>
   nextEmbeddingBatch(generationId: string, limit: number): Promise<Array<EmbeddingBatchItem>>
   putEmbeddings(generationId: string, values: Array<EmbeddingResult>, dimensions: number): Promise<void>
   commitIndex(generationId: string): Promise<void>
