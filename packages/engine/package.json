@@ -23,8 +23,7 @@
     "binaryName": "lci-mcp-engine",
     "targets": [
       "x86_64-unknown-linux-gnu",
-      "aarch64-unknown-linux-gnu",
-      "x86_64-pc-windows-msvc"
+      "aarch64-unknown-linux-gnu"
     ]
   },
   "devDependencies": {

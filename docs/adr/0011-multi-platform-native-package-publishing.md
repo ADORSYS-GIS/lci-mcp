@@ -40,18 +40,22 @@ after the build loop, asserting the binding actually loads before anything gets 
 
 ### Consequences
 
-- Good, because no new runner infrastructure is needed — the existing self-hosted Linux runner covers
+- Good, because no new runner infrastructure is needed — a single GitHub-hosted Linux runner covers
   every declared target
 - Good, because the per-platform-package layout was already anticipated (`.gitignore` excludes
   `packages/engine/npm/` with a comment to that effect) — this just wires it up
 - Bad, because cross-compiling C dependencies (`rusqlite`'s bundled SQLite, `git2`'s vendored
   libgit2) under `zig cc`/`cargo-xwin` hasn't been fully verified against this crate's actual
-  dependency set yet — see [#5](https://github.com/ADORSYS-GIS/lci-mcp/issues/5). The Linux and
-  Windows targets build cleanly; the macOS targets are paused (not in `napi.targets`) because
-  `libgit2-sys`'s build script links `Security.framework`/`CoreFoundation.framework` unconditionally
-  for any Apple target, and `zig cc` cannot resolve real Apple frameworks without an actual macOS SDK
-  on `SDKROOT` — see [#14](https://github.com/ADORSYS-GIS/lci-mcp/issues/14) for the SDK-source
-  decision and the work to restore them
+  dependency set yet — see [#5](https://github.com/ADORSYS-GIS/lci-mcp/issues/5). Only the two Linux
+  targets are declared in `napi.targets` today:
+  - the macOS targets are paused because `libgit2-sys`'s build script links
+    `Security.framework`/`CoreFoundation.framework` unconditionally for any Apple target, and
+    `zig cc` cannot resolve real Apple frameworks without an actual macOS SDK on `SDKROOT` — see
+    [#14](https://github.com/ADORSYS-GIS/lci-mcp/issues/14) for the SDK-source decision and the work
+    to restore them
+  - the Windows target is paused because `cargo-xwin` drives the MSVC toolchain through LLVM's
+    binutils (`CC=clang-cl`, `AR=llvm-lib`), and the GitHub-hosted Ubuntu image ships the Clang
+    front-end without them, so every C-bearing dependency fails to archive
 - Neutral, because publishing needs its own auth mechanism decided separately — see
   [ADR-0013](./0013-oidc-trusted-publishing.md), which replaces the `NPM_TOKEN` this note originally
   anticipated with OIDC trusted publishing instead
