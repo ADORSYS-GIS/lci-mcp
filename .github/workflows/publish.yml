@@ -59,45 +59,22 @@ jobs:
         working-directory: packages/server
         run: pnpm smoke:native
 
-      - name: Scaffold and populate per-platform npm packages
-        working-directory: packages/engine
-        # --skip-optional-publish: the publish job downloads these packages and publishes them
-        # itself — this step only prepares files, it never publishes.
-        # --no-gh-release: binaries reach users as npm optionalDependencies, not GitHub release
-        # assets, so no release needs creating here.
-        run: |
-          pnpm exec napi create-npm-dirs
-          pnpm exec napi artifacts --output-dir .
-          pnpm exec napi pre-publish --skip-optional-publish --no-gh-release
-
       - name: Build the MCP server bundle
         working-directory: packages/server
-        # packages/engine's optionalDependencies now name platform packages this is their first
-        # release for, so pnpm can't resolve them against the registry yet; CI=false lets pnpm
-        # install leniently around that instead of refusing to run at all.
         run: pnpm build
-        env:
-          CI: "false"
 
-      - name: Pack every package into publishable tarballs
-        # Grouped by publish order (platform packages, then the native package that optionally
-        # depends on them, then the server package that depends on that) rather than left to
-        # filesystem/glob ordering, which the packages' own overlapping name prefixes would get
-        # wrong. `pnpm pack` (not `npm pack`) for the two workspace packages is load-bearing: it
-        # resolves their `workspace:*` dependency to a real version the way `npm publish` alone
-        # cannot, since plain `npm` has no notion of that protocol.
-        # CI=false: same as the build step above, packages/engine's brand-new optional platform
-        # dependencies can't resolve against the registry yet.
+      - name: Pack both packages into publishable tarballs
+        # The native package carries every target's binary directly: the build loop above writes
+        # each `.node` into `packages/engine/`, and that package's `files` glob picks them all up,
+        # so the generated loader in `index.js` finds the host platform's binary inside the package
+        # it was installed from. `pnpm pack` (not `npm pack`) is load-bearing — it resolves the
+        # server package's `workspace:*` dependency on the native package to a real version, which
+        # plain `npm` has no notion of.
         run: |
           set -euo pipefail
-          mkdir -p dist-packages/platforms dist-packages/native dist-packages/server
-          for dir in packages/engine/npm/*/; do
-            (cd "$dir" && npm pack --pack-destination "$GITHUB_WORKSPACE/dist-packages/platforms")
-          done
+          mkdir -p dist-packages/native dist-packages/server
           pnpm --filter @vymalo/lightbridge-code-intelligence-native pack --pack-destination dist-packages/native
           pnpm --filter @vymalo/lightbridge-code-intelligence-mcp pack --pack-destination dist-packages/server
-        env:
-          CI: "false"
 
       - name: Upload packed tarballs
         uses: actions/upload-artifact@v7
@@ -128,13 +105,6 @@ jobs:
         with:
           name: npm-packages
           path: dist-packages
-
-      - name: Publish platform packages
-        run: |
-          set -euo pipefail
-          for tarball in dist-packages/platforms/*.tgz; do
-            npm publish "$tarball" --access public
-          done
 
       - name: Publish the native package
         run: npm publish dist-packages/native/*.tgz --access public

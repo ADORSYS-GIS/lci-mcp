@@ -32,18 +32,31 @@ Windows too?
 Chosen option: **cross-compilation from the single runner**. `@napi-rs/cli`'s `--cross-compile` flag
 builds every non-host target from one machine — `cargo-zigbuild` for macOS/Linux-arm64, `cargo-xwin`
 for Windows-MSVC — which fits the runner constraint without provisioning new infrastructure.
-`napi create-npm-dirs` + `napi pre-publish` then scaffold one `os`/`cpu`-scoped package per target
-under `packages/engine/npm/` and wire them into the main package's `optionalDependencies`; the
-generated loader in `packages/engine/index.js` already knows how to resolve them and needed no
-change. A smoke test (`packages/server/scripts/smoke-test-native.mjs`) runs in the same job right
-after the build loop, asserting the binding actually loads before anything gets published.
+Every target's binary then ships inside the one `@vymalo/lightbridge-code-intelligence-native`
+package: the build loop writes each `.node` into `packages/engine/`, that package's `files` glob
+picks them all up, and the generated loader in `packages/engine/index.js` resolves the host
+platform's binary from the package it was installed from — its per-platform `require` of a bundled
+`./lci-mcp-engine.<target>.node` is tried before the `optionalDependencies` fallback, so the loader
+needed no change. A smoke test (`packages/server/scripts/smoke-test-native.mjs`) runs in the same job
+right after the build loop, asserting the binding actually loads before anything gets published.
+
+Distributing one `os`/`cpu`-scoped package per target instead — `napi create-npm-dirs` +
+`napi pre-publish` scaffolding them under `packages/engine/npm/` and wiring them into
+`optionalDependencies` — is the layout `@napi-rs/cli` defaults to, and remains the right answer once
+the target matrix is large enough that shipping every binary to every install stops being
+proportionate. It is not viable while the matrix is small: npm configures trusted publishing per
+package and only for packages that already exist ([npm/cli#8544](https://github.com/npm/cli/issues/8544)),
+so each new per-target package name has to be bootstrapped by a token publish before OIDC can ever
+publish it.
 
 ### Consequences
 
 - Good, because no new runner infrastructure is needed — a single GitHub-hosted Linux runner covers
   every declared target
-- Good, because the per-platform-package layout was already anticipated (`.gitignore` excludes
-  `packages/engine/npm/` with a comment to that effect) — this just wires it up
+- Good, because the release publishes only package names that already exist, so it never depends on
+  a bootstrap step that OIDC trusted publishing cannot perform
+- Bad, because every install downloads every target's binary — 11 MB packed and 30 MB unpacked for
+  the two Linux targets, of which one is always dead weight
 - Bad, because cross-compiling C dependencies (`rusqlite`'s bundled SQLite, `git2`'s vendored
   libgit2) under `zig cc`/`cargo-xwin` hasn't been fully verified against this crate's actual
   dependency set yet — see [#5](https://github.com/ADORSYS-GIS/lci-mcp/issues/5). Only the two Linux
