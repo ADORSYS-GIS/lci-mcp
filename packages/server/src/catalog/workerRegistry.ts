@@ -5,7 +5,7 @@ import type { CodeIndex } from "../engine.js";
 import type { RepositoryCatalogRecord } from "./schema.js";
 import { RepositoryCatalogStore } from "./store.js";
 
-export type WorkerOperation = "query" | "index";
+export type WorkerOperation = "query" | "index" | "status";
 
 export interface RepositoryWorkerResources {
   codeIndex: CodeIndex;

@@ -4,6 +4,11 @@ import path from "node:path";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 
 import { AuthHeaderCache } from "./auth/cache.js";
+import { RepositoryCatalogStore } from "./catalog/store.js";
+import type { RepositoryCatalogRecord } from "./catalog/schema.js";
+import { toSafeRepositorySummary } from "./catalog/schema.js";
+import { createRepositoryAuthorizer } from "./catalog/authorization.js";
+import { RepositoryWorkerRegistry } from "./catalog/workerRegistry.js";
 import { loadConfig } from "./config/load.js";
 import { toSafeRepositoryConfig, type AuthHelperConfig } from "./config/schema.js";
 import { buildTemplateContext, expandTemplate } from "./config/template.js";
@@ -142,6 +147,8 @@ async function main(): Promise<void> {
   });
   const templateContext = await buildTemplateContext(repoRoot);
   const databasePath = expandTemplate(config.storage.database, templateContext);
+  const catalogPath = expandTemplate(config.storage.catalog, templateContext);
+  const indexRoot = expandTemplate(config.storage.indexRoot, templateContext);
 
   if (args.subcommand === "config-show") {
     process.stdout.write(
@@ -164,7 +171,12 @@ async function main(): Promise<void> {
                     : { type: "none" },
               }
             : undefined,
-          storage: { template: config.storage.database, resolved: databasePath },
+          storage: {
+            template: config.storage.database,
+            resolved: databasePath,
+            catalog: catalogPath,
+            indexRoot,
+          },
           repositories: config.repositories.map(toSafeRepositoryConfig),
           logging: config.logging,
         },
@@ -184,7 +196,8 @@ async function main(): Promise<void> {
   const logger = new Logger(config.logging.level);
   logger.info("starting", { repoRoot, databasePath });
 
-  const codeIndex = await CodeIndex.open({ repository: repoRoot, database: databasePath });
+  const multiRepository = config.repositories.length > 0;
+  const codeIndex = multiRepository ? undefined : await CodeIndex.open({ repository: repoRoot, database: databasePath });
 
   const authHelperConfig = config.embedding.auth.helper;
   const authCache = authHelperConfig
@@ -214,7 +227,59 @@ async function main(): Promise<void> {
       })
     : undefined;
 
-  const server = createServer({ codeIndex, embeddingClient, config, logger, repoRoot, databasePath });
+  const catalog = new RepositoryCatalogStore(catalogPath);
+  if (multiRepository) {
+    for (const entry of config.repositories) {
+      const existing = await catalog.get(entry.repositoryId);
+      if (!existing) {
+        const now = new Date().toISOString();
+        const record: RepositoryCatalogRecord = {
+          ...entry,
+          queryable: entry.enabled,
+          lifecycle: "registered",
+          createdAt: now,
+          updatedAt: now,
+        };
+        await catalog.add(record);
+      }
+    }
+  }
+
+  let workerRegistry: RepositoryWorkerRegistry | undefined;
+  let defaultRepositoryId: string | undefined;
+  let allowImplicitRepository = true;
+  let listRepositories: (() => Promise<ReturnType<typeof toSafeRepositorySummary>[]>) | undefined;
+  if (multiRepository) {
+    workerRegistry = new RepositoryWorkerRegistry({
+      catalog,
+      storageRoot: indexRoot,
+      maxWorkers: config.index.maxConcurrentRepositories,
+      authorize: createRepositoryAuthorizer(process.env.LCI_PRINCIPAL),
+      factory: async (repository, repositoryDatabasePath) => ({
+        codeIndex: await CodeIndex.open({ repository: repository.checkoutPath, database: repositoryDatabasePath }),
+        embeddingClient,
+      }),
+    });
+    defaultRepositoryId = undefined;
+    allowImplicitRepository = false;
+    listRepositories = async () => {
+      const document = await catalog.load();
+      return document.repositories.map(toSafeRepositorySummary);
+    };
+  }
+
+  const server = createServer({
+    codeIndex,
+    embeddingClient,
+    config,
+    logger,
+    repoRoot,
+    databasePath,
+    workerRegistry,
+    defaultRepositoryId,
+    allowImplicitRepository,
+    listRepositories,
+  });
   const transport = new StdioServerTransport();
   await server.connect(transport);
   logger.info("MCP server ready");

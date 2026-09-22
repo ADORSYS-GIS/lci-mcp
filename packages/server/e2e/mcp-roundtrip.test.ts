@@ -68,8 +68,10 @@ describe("MCP stdio round trip against the real built CLI + engine", () => {
     rmSync(databaseRoot, { recursive: true, force: true });
   });
 
-  it("lists all seven tools with schemas", async () => {
-    const result = (await client.request("tools/list")) as { tools: Array<{ name: string }> };
+  it("lists all nine tools with schemas", async () => {
+    const result = (await client.request("tools/list")) as {
+      tools: Array<{ name: string; inputSchema?: { properties?: Record<string, unknown> } }>;
+    };
     const names = result.tools.map((t) => t.name).sort();
     expect(names).toEqual(
       [
@@ -79,9 +81,35 @@ describe("MCP stdio round trip against the real built CLI + engine", () => {
         "lci_get_callers",
         "lci_index",
         "lci_index_status",
+        "lci_repositories",
+        "lci_search_many",
         "lci_search",
       ].sort(),
     );
+    const scopedTools = new Set([
+      "lci_index",
+      "lci_index_status",
+      "lci_search",
+      "lci_search_many",
+      "lci_find_symbol",
+      "lci_get_callers",
+      "lci_get_callees",
+      "lci_explore_symbol",
+    ]);
+    for (const tool of result.tools.filter((candidate) => scopedTools.has(candidate.name))) {
+      if (tool.name === "lci_search_many") continue;
+      expect(tool.inputSchema?.properties).toHaveProperty("repository_id");
+    }
+  });
+
+  it("lists safe repository discovery metadata", async () => {
+    const repositories = parseToolResult(await callTool(client, "lci_repositories")) as Array<{
+      repositoryId: string;
+      lifecycle: string;
+    }>;
+    expect(repositories).toHaveLength(1);
+    expect(repositories[0]?.repositoryId).toBe("default");
+    expect(repositories[0]?.lifecycle).toBe("ready");
   });
 
   it("reports never_ran before any indexing has happened", async () => {

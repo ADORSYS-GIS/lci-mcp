@@ -1,6 +1,8 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { z } from "zod";
 
 import type { AppContext } from "../context.js";
+import { repositoryEnvelope, resolveToolWorker } from "../context.js";
 import { textResult } from "../toolResult.js";
 
 /** `lci_index_status` tool registration. */
@@ -8,9 +10,13 @@ export function registerIndexStatusTool(server: McpServer, ctx: AppContext): voi
   server.registerTool(
     "lci_index_status",
     {
-      description: "Returns index lifecycle, freshness, and statistics for the current repository.",
-      inputSchema: {},
+      description: "Returns index lifecycle, freshness, and statistics for a selected repository.",
+      inputSchema: { repository_id: z.string().optional() },
     },
-    async () => textResult(await ctx.codeIndex.status()),
+    async ({ repository_id }) => {
+      const { worker, explicit } = await resolveToolWorker(ctx, repository_id, "status");
+      const status = await worker.codeIndex.status();
+      return textResult(explicit ? repositoryEnvelope(worker, status) : status);
+    },
   );
 }

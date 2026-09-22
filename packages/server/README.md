@@ -34,6 +34,31 @@ the repository to index:
 
 Then call `lci_index` once. Structural queries work as soon as it returns.
 
+### Multiple repositories
+
+For a configured multi-repository process, provide a manifest containing repository IDs, approved
+checkout paths, and remote URLs. The five initial repositories are represented in
+[`sample notes/tickets/extend_lci-mcp/repositories.example.json`](../../sample%20notes/tickets/extend_lci-mcp/repositories.example.json);
+copy and adapt it without placing credentials in the file.
+
+Multi-repository calls require `repository_id`:
+
+```json
+{
+  "repository_id": "repo-a",
+  "query": "where is authentication configured?"
+}
+```
+
+Use `lci_repositories` for safe discovery and `lci_search_many` with an explicit bounded list for
+cross-repository questions. Each repository has its own `CodeIndex` worker and SQLite index under
+the configured `storage.indexRoot`. The MCP server returns repository and revision provenance; an
+external chatbot or Copilot adapter is responsible for answer generation.
+
+When no repository manifest is configured, the existing `--root` single-repository mode remains
+compatible and omitted `repository_id` calls continue to target that repository. Manifest reload is
+restart-only in the current local implementation.
+
 Requires Node.js 24 or newer. The Rust engine ships as a prebuilt native addon in
 [`@vymalo/lightbridge-code-intelligence-native`](https://www.npmjs.com/package/@vymalo/lightbridge-code-intelligence-native),
 fetched automatically. Prebuilt binaries currently cover **Linux x64 (glibc)** and

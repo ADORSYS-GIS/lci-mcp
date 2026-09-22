@@ -8,14 +8,18 @@ import { registerFindSymbolTool } from "./tools/findSymbol.js";
 import { registerIndexStatusTool } from "./tools/indexStatus.js";
 import { registerIndexTool } from "./tools/indexTool.js";
 import { registerSearchTool } from "./tools/search.js";
+import { registerRepositoriesTool } from "./tools/repositories.js";
+import { registerSearchManyTool } from "./tools/searchMany.js";
 
 /** A deliberately small, semantic tool surface — never raw SQL or graph-query access. */
 export function createServer(ctx: AppContext): McpServer {
   const server = new McpServer({ name: "lightbridge-code-intelligence", version: "0.1.0" });
 
   registerIndexTool(server, ctx);
+  registerRepositoriesTool(server, ctx);
   registerIndexStatusTool(server, ctx);
   registerSearchTool(server, ctx);
+  registerSearchManyTool(server, ctx);
   registerFindSymbolTool(server, ctx);
   registerCallersTool(server, ctx);
   registerCalleesTool(server, ctx);
