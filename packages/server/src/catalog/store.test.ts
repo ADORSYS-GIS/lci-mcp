@@ -11,6 +11,13 @@ const repository = {
   displayName: "Repository A",
   remoteUrl: "https://git.example.test/team/repo-a",
   checkoutPath: "/var/lib/lci/checkouts/repo-a",
+  enabled: true,
+  queryable: false,
+  allowedPrincipals: [],
+  embeddingProfile: "default",
+  structuralOnly: false,
+  autoIndex: false,
+  lifecycle: "registered" as const,
   createdAt: "2026-09-22T00:00:00.000Z",
   updatedAt: "2026-09-22T00:00:00.000Z",
 };
