@@ -1,3 +1,5 @@
+import path from "node:path";
+
 import { z } from "zod";
 
 export const AuthHelperSchema = z.object({
@@ -23,12 +25,50 @@ export const EmbeddingConfigSchema = z.object({
   auth: EmbeddingAuthSchema.default({}),
 });
 
+export const RepositoryManifestEntrySchema = z
+  .object({
+    repositoryId: z
+      .string()
+      .regex(/^[a-z0-9](?:[a-z0-9._-]{0,62})$/, "repositoryId must be a stable opaque identifier")
+      .refine((value) => !value.includes(".."), "repositoryId must not contain path traversal"),
+    displayName: z.string().trim().min(1).max(200),
+    remoteUrl: z
+      .string()
+      .url()
+      .refine((value) => {
+        const parsed = new URL(value);
+        return ["http:", "https:", "ssh:"].includes(parsed.protocol) && !parsed.username && !parsed.password;
+      }, "remoteUrl must use http, https, or ssh without embedded credentials"),
+    checkoutPath: z
+      .string()
+      .min(1)
+      .refine((value) => path.isAbsolute(value), "checkoutPath must be absolute")
+      .refine((value) => !value.includes("\0"), "checkoutPath must not contain a null byte"),
+    enabled: z.boolean().default(true),
+    allowedPrincipals: z.array(z.string().trim().min(1)).default([]),
+    embeddingProfile: z.string().trim().min(1).default("default"),
+    structuralOnly: z.boolean().default(false),
+    autoIndex: z.boolean().default(false),
+    refreshIntervalMinutes: z.number().int().positive().optional(),
+  })
+  .strict();
+export type RepositoryManifestEntry = z.infer<typeof RepositoryManifestEntrySchema>;
+
 export const StorageConfigSchema = z.object({
   database: z.string().default("{{dataDir}}/lci-mcp/{{repoKey}}/index.sqlite"),
+  catalog: z
+    .string()
+    .refine((value) => path.isAbsolute(value) || value.startsWith("{{"), "catalog must be absolute or use a template")
+    .default("{{dataDir}}/lci-mcp/catalog.json"),
+  indexRoot: z
+    .string()
+    .refine((value) => path.isAbsolute(value) || value.startsWith("{{"), "indexRoot must be absolute or use a template")
+    .default("{{dataDir}}/lci-mcp/repos"),
 });
 
 export const IndexConfigSchema = z.object({
   autoIndex: z.boolean().default(false),
+  maxConcurrentRepositories: z.number().int().positive().default(2),
 });
 
 export const LoggingConfigSchema = z.object({
@@ -44,7 +84,30 @@ export const LciConfigSchema = z
     storage: StorageConfigSchema,
     index: IndexConfigSchema,
     logging: LoggingConfigSchema,
+    repositories: z.array(RepositoryManifestEntrySchema).default([]),
   })
   .strict();
 
 export type LciConfig = z.infer<typeof LciConfigSchema>;
+
+export function validateRepositoryManifest(entries: RepositoryManifestEntry[]): RepositoryManifestEntry[] {
+  const seenIds = new Set<string>();
+  const duplicateIds = new Set<string>();
+  for (const entry of entries) {
+    if (seenIds.has(entry.repositoryId)) duplicateIds.add(entry.repositoryId);
+    seenIds.add(entry.repositoryId);
+  }
+  if (duplicateIds.size > 0) throw new Error(`duplicate repository IDs: ${[...duplicateIds].join(", ")}`);
+  return entries;
+}
+
+export function toSafeRepositoryConfig(entry: RepositoryManifestEntry) {
+  return {
+    repositoryId: entry.repositoryId,
+    displayName: entry.displayName,
+    enabled: entry.enabled,
+    embeddingProfile: entry.embeddingProfile,
+    structuralOnly: entry.structuralOnly,
+    autoIndex: entry.autoIndex,
+  };
+}

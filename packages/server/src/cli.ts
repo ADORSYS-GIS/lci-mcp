@@ -5,7 +5,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 
 import { AuthHeaderCache } from "./auth/cache.js";
 import { loadConfig } from "./config/load.js";
-import type { AuthHelperConfig } from "./config/schema.js";
+import { toSafeRepositoryConfig, type AuthHelperConfig } from "./config/schema.js";
 import { buildTemplateContext, expandTemplate } from "./config/template.js";
 import { EmbeddingClient } from "./embedding/client.js";
 import { CodeIndex } from "./engine.js";
@@ -165,6 +165,7 @@ async function main(): Promise<void> {
               }
             : undefined,
           storage: { template: config.storage.database, resolved: databasePath },
+          repositories: config.repositories.map(toSafeRepositoryConfig),
           logging: config.logging,
         },
         null,
