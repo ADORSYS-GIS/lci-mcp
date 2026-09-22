@@ -54,19 +54,28 @@ describe("RepositoryWorkerRegistry", () => {
 
   it("deduplicates concurrent opens and isolates database paths", async () => {
     const { catalog, storageRoot } = await makeCatalog();
-    await catalog.add({ ...repository, repositoryId: "repo-b", displayName: "Repository B", checkoutPath: "/var/lib/lci/checkouts/repo-b" });
+    await catalog.add({
+      ...repository,
+      repositoryId: "repo-b",
+      displayName: "Repository B",
+      checkoutPath: "/var/lib/lci/checkouts/repo-b",
+    });
     let opens = 0;
     const registry = new RepositoryWorkerRegistry({
       catalog,
       storageRoot,
-      factory: async (_repository, databasePath) => {
+      factory: async (_repository, _databasePath) => {
         opens++;
         await new Promise((resolve) => setTimeout(resolve, 1));
         return fakeResources();
       },
     });
 
-    const [a1, a2, b] = await Promise.all([registry.resolve("repo-a"), registry.resolve("repo-a"), registry.resolve("repo-b")]);
+    const [a1, a2, b] = await Promise.all([
+      registry.resolve("repo-a"),
+      registry.resolve("repo-a"),
+      registry.resolve("repo-b"),
+    ]);
     expect(a1).toBe(a2);
     expect(a1.databasePath).not.toBe(b.databasePath);
     expect(opens).toBe(2);
@@ -111,7 +120,12 @@ describe("RepositoryWorkerRegistry", () => {
 
   it("enforces the worker capacity and closes cached workers", async () => {
     const { catalog, storageRoot } = await makeCatalog();
-    await catalog.add({ ...repository, repositoryId: "repo-b", displayName: "Repository B", checkoutPath: "/var/lib/lci/checkouts/repo-b" });
+    await catalog.add({
+      ...repository,
+      repositoryId: "repo-b",
+      displayName: "Repository B",
+      checkoutPath: "/var/lib/lci/checkouts/repo-b",
+    });
     const closed: string[] = [];
     const registry = new RepositoryWorkerRegistry({
       catalog,

@@ -1,9 +1,9 @@
-import { access, mkdir, realpath } from "node:fs/promises";
 import { spawn } from "node:child_process";
+import { access, mkdir, realpath } from "node:fs/promises";
 import path from "node:path";
 
-import { RepositoryCatalogStore } from "./store.js";
 import type { RepositoryCatalogRecord } from "./schema.js";
+import type { RepositoryCatalogStore } from "./store.js";
 
 export interface RepositoryRegistration {
   repositoryId: string;
@@ -128,14 +128,14 @@ function validateRemoteUrl(remoteUrl: string, allowedHosts: Set<string>): string
 
 async function ensureCheckoutPathIsSafe(checkoutPath: string, checkoutRoot: string): Promise<void> {
   const relative = path.relative(checkoutRoot, checkoutPath);
-  if (!relative || relative.startsWith(".." + path.sep) || path.isAbsolute(relative)) {
+  if (!relative || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
     throw new Error("checkout path escaped the approved checkout root");
   }
   try {
     const existing = await realpath(checkoutPath);
     const resolvedRoot = await realpath(checkoutRoot).catch(() => checkoutRoot);
     const existingRelative = path.relative(resolvedRoot, existing);
-    if (existingRelative.startsWith(".." + path.sep) || path.isAbsolute(existingRelative)) {
+    if (existingRelative.startsWith(`..${path.sep}`) || path.isAbsolute(existingRelative)) {
       throw new Error("existing checkout path escaped the approved checkout root");
     }
   } catch (error) {

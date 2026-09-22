@@ -1,8 +1,7 @@
-import { createServer as createHttpServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { timingSafeEqual } from "node:crypto";
-
-import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { createServer as createHttpServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 
 export interface HttpMcpServerOptions {
   host: string;
@@ -71,7 +70,12 @@ export function startHttpMcpServer(options: HttpMcpServerOptions): Server {
   return httpServer;
 }
 
-function writeJson(response: ServerResponse, statusCode: number, body: unknown, headers: Record<string, string> = {}): void {
+function writeJson(
+  response: ServerResponse,
+  statusCode: number,
+  body: unknown,
+  headers: Record<string, string> = {},
+): void {
   response.writeHead(statusCode, { "content-type": "application/json", ...headers });
   response.end(JSON.stringify(body));
 }

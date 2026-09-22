@@ -3,11 +3,11 @@ import path from "node:path";
 
 import {
   assertLifecycleTransition,
+  type CatalogDocument,
   migrateCatalogDocument,
   parseCatalogDocument,
-  RepositoryCatalogRecordSchema,
-  type CatalogDocument,
   type RepositoryCatalogRecord,
+  RepositoryCatalogRecordSchema,
   type RepositoryLifecycle,
 } from "./schema.js";
 
@@ -51,7 +51,11 @@ export class RepositoryCatalogStore {
     await this.save({ ...catalog, repositories: [...catalog.repositories, validated] });
   }
 
-  async transition(repositoryId: string, lifecycle: RepositoryLifecycle, patch: Partial<RepositoryCatalogRecord> = {}): Promise<void> {
+  async transition(
+    repositoryId: string,
+    lifecycle: RepositoryLifecycle,
+    patch: Partial<RepositoryCatalogRecord> = {},
+  ): Promise<void> {
     const catalog = await this.load();
     const index = catalog.repositories.findIndex((repository) => repository.repositoryId === repositoryId);
     if (index < 0) throw new Error(`repository not found: ${repositoryId}`);

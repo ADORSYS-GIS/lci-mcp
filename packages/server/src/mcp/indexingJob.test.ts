@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
-
-import { startBackgroundIndexJob, waitForBackgroundIndexJob } from "./indexingJob.js";
 import type { Logger } from "../logging.js";
+import { startBackgroundIndexJob, waitForBackgroundIndexJob } from "./indexingJob.js";
 
 const logger = {
   error: () => undefined,

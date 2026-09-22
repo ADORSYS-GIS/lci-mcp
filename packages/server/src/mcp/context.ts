@@ -1,11 +1,14 @@
+import type { SafeRepositorySummary } from "../catalog/schema.js";
+import type { RepositoryWorker, RepositoryWorkerRegistry, WorkerOperation } from "../catalog/workerRegistry.js";
 import type { LciConfig } from "../config/schema.js";
 import type { EmbeddingClient } from "../embedding/client.js";
 import type { CodeIndex } from "../engine.js";
 import type { Logger } from "../logging.js";
-import type { SafeRepositorySummary } from "../catalog/schema.js";
-import type { RepositoryWorker, RepositoryWorkerRegistry, WorkerOperation } from "../catalog/workerRegistry.js";
 
-export type ToolWorker = Pick<RepositoryWorker, "codeIndex" | "embeddingClient" | "repository" | "repositoryRoot" | "databasePath">;
+export type ToolWorker = Pick<
+  RepositoryWorker,
+  "codeIndex" | "embeddingClient" | "repository" | "repositoryRoot" | "databasePath"
+>;
 
 /** Shared state every tool handler needs — built once in cli.ts, passed into createServer. */
 export interface AppContext {
@@ -69,7 +72,10 @@ export async function resolveToolWorker(
   };
 }
 
-export function repositoryEnvelope<T>(worker: ToolWorker, results: T): { repository: SafeRepositorySummary; results: T } {
+export function repositoryEnvelope<T>(
+  worker: ToolWorker,
+  results: T,
+): { repository: SafeRepositorySummary; results: T } {
   return {
     repository: {
       repositoryId: worker.repository.repositoryId,

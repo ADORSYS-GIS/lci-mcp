@@ -3,7 +3,7 @@ import path from "node:path";
 import type { EmbeddingClient } from "../embedding/client.js";
 import type { CodeIndex } from "../engine.js";
 import type { RepositoryCatalogRecord } from "./schema.js";
-import { RepositoryCatalogStore } from "./store.js";
+import type { RepositoryCatalogStore } from "./store.js";
 
 export type WorkerOperation = "query" | "index" | "status";
 

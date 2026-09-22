@@ -7,8 +7,8 @@ import { registerExploreSymbolTool } from "./tools/exploreSymbol.js";
 import { registerFindSymbolTool } from "./tools/findSymbol.js";
 import { registerIndexStatusTool } from "./tools/indexStatus.js";
 import { registerIndexTool } from "./tools/indexTool.js";
-import { registerSearchTool } from "./tools/search.js";
 import { registerRepositoriesTool } from "./tools/repositories.js";
+import { registerSearchTool } from "./tools/search.js";
 import { registerSearchManyTool } from "./tools/searchMany.js";
 
 /** A deliberately small, semantic tool surface — never raw SQL or graph-query access. */

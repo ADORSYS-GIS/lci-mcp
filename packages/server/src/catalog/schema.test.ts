@@ -28,7 +28,12 @@ describe("RepositoryCatalogRecordSchema", () => {
   });
 
   it("rejects credentials embedded in remote URLs", () => {
-    expect(() => RepositoryCatalogRecordSchema.parse({ ...validRepository, remoteUrl: "https://user:secret@git.example.test/repo" })).toThrow();
+    expect(() =>
+      RepositoryCatalogRecordSchema.parse({
+        ...validRepository,
+        remoteUrl: "https://user:secret@git.example.test/repo",
+      }),
+    ).toThrow();
   });
 
   it("rejects missing or relative checkout paths", () => {
@@ -39,7 +44,10 @@ describe("RepositoryCatalogRecordSchema", () => {
 
 describe("catalog migration and lifecycle", () => {
   it("migrates the version zero envelope", () => {
-    expect(migrateCatalogDocument({ schemaVersion: 0, repositories: [] })).toEqual({ schemaVersion: 1, repositories: [] });
+    expect(migrateCatalogDocument({ schemaVersion: 0, repositories: [] })).toEqual({
+      schemaVersion: 1,
+      repositories: [],
+    });
   });
 
   it("rejects duplicate IDs in a catalog document", () => {

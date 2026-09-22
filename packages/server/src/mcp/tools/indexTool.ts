@@ -1,7 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 
-import { type AppContext, type ToolWorker, repositoryEnvelope, resolveToolWorker } from "../context.js";
+import { type AppContext, repositoryEnvelope, resolveToolWorker, type ToolWorker } from "../context.js";
 import { startBackgroundIndexJob } from "../indexingJob.js";
 import { textResult } from "../toolResult.js";
 

@@ -4,8 +4,8 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import { type GitCheckoutAdapter, RepositoryProvisioner } from "./provisioning.js";
 import { RepositoryCatalogStore } from "./store.js";
-import { RepositoryProvisioner, type GitCheckoutAdapter } from "./provisioning.js";
 
 class FakeGit implements GitCheckoutAdapter {
   calls: Array<{ remoteUrl: string; checkoutPath: string }> = [];
@@ -19,10 +19,14 @@ async function makeProvisioner() {
   const directory = await mkdtemp(path.join(tmpdir(), "lci-provisioning-test-"));
   const catalog = new RepositoryCatalogStore(path.join(directory, "catalog.json"));
   const git = new FakeGit();
-  const provisioner = new RepositoryProvisioner(catalog, {
-    checkoutRoot: path.join(directory, "checkouts"),
-    allowedHosts: ["git.example.test"],
-  }, git);
+  const provisioner = new RepositoryProvisioner(
+    catalog,
+    {
+      checkoutRoot: path.join(directory, "checkouts"),
+      allowedHosts: ["git.example.test"],
+    },
+    git,
+  );
   return { catalog, git, provisioner, directory };
 }
 
@@ -40,11 +44,15 @@ describe("RepositoryProvisioner", () => {
 
   it("rejects disallowed hosts and embedded credentials", async () => {
     const { provisioner } = await makeProvisioner();
-    await expect(provisioner.register({ repositoryId: "repo-a", displayName: "A", remoteUrl: "https://evil.test/a" })).rejects.toThrow(
-      "Git host is not allowed",
-    );
     await expect(
-      provisioner.register({ repositoryId: "repo-a", displayName: "A", remoteUrl: "https://user:secret@git.example.test/a" }),
+      provisioner.register({ repositoryId: "repo-a", displayName: "A", remoteUrl: "https://evil.test/a" }),
+    ).rejects.toThrow("Git host is not allowed");
+    await expect(
+      provisioner.register({
+        repositoryId: "repo-a",
+        displayName: "A",
+        remoteUrl: "https://user:secret@git.example.test/a",
+      }),
     ).rejects.toThrow("without embedded credentials");
   });
 

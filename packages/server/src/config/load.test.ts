@@ -79,9 +79,9 @@ describe("resolveConfig precedence", () => {
     expect(() => resolveConfig([{ name: "file", value: { repositories: [entry, entry] } }])).toThrow(
       "duplicate repository IDs",
     );
-    expect(() => resolveConfig([{ name: "file", value: { repositories: [{ ...entry, checkoutPath: "repo-a" }] } }])).toThrow(
-      "checkoutPath must be absolute",
-    );
+    expect(() =>
+      resolveConfig([{ name: "file", value: { repositories: [{ ...entry, checkoutPath: "repo-a" }] } }]),
+    ).toThrow("checkoutPath must be absolute");
     expect(() => resolveConfig([{ name: "file", value: { storage: { catalog: "catalog.json" } } }])).toThrow(
       "catalog must be absolute or use a template",
     );

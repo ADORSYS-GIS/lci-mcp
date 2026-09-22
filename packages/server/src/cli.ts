@@ -4,21 +4,21 @@ import path from "node:path";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 
 import { AuthHeaderCache } from "./auth/cache.js";
-import { RepositoryCatalogStore } from "./catalog/store.js";
+import { createRepositoryAuthorizer } from "./catalog/authorization.js";
 import type { RepositoryCatalogRecord } from "./catalog/schema.js";
 import { toSafeRepositorySummary } from "./catalog/schema.js";
-import { createRepositoryAuthorizer } from "./catalog/authorization.js";
+import { RepositoryCatalogStore } from "./catalog/store.js";
 import { RepositoryWorkerRegistry } from "./catalog/workerRegistry.js";
 import { loadConfig } from "./config/load.js";
-import { toSafeRepositoryConfig, type AuthHelperConfig } from "./config/schema.js";
+import { type AuthHelperConfig, toSafeRepositoryConfig } from "./config/schema.js";
 import { buildTemplateContext, expandTemplate } from "./config/template.js";
 import { EmbeddingClient } from "./embedding/client.js";
 import { CodeIndex } from "./engine.js";
+import { startHttpMcpServer } from "./http/server.js";
 import { Logger } from "./logging.js";
+import { waitForBackgroundIndexJob } from "./mcp/indexingJob.js";
 import { createServer } from "./mcp/server.js";
 import { isUnsafeIndexRoot } from "./rootSafety.js";
-import { startHttpMcpServer } from "./http/server.js";
-import { waitForBackgroundIndexJob } from "./mcp/indexingJob.js";
 
 // Appendix B's CLI surface, hand-parsed: the flag set is small enough that a dependency isn't
 // earning its keep, and this keeps secret-bearing flags impossible to accidentally leak through a
@@ -214,7 +214,9 @@ async function main(): Promise<void> {
   logger.info("starting", { repoRoot, databasePath });
 
   const multiRepository = config.repositories.length > 0;
-  const codeIndex = multiRepository ? undefined : await CodeIndex.open({ repository: repoRoot, database: databasePath });
+  const codeIndex = multiRepository
+    ? undefined
+    : await CodeIndex.open({ repository: repoRoot, database: databasePath });
 
   const authHelperConfig = config.embedding.auth.helper;
   const authCache = authHelperConfig
