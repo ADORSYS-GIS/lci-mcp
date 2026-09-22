@@ -17,12 +17,17 @@ import { CodeIndex } from "./engine.js";
 import { Logger } from "./logging.js";
 import { createServer } from "./mcp/server.js";
 import { isUnsafeIndexRoot } from "./rootSafety.js";
+import { startHttpMcpServer } from "./http/server.js";
+import { waitForBackgroundIndexJob } from "./mcp/indexingJob.js";
 
 // Appendix B's CLI surface, hand-parsed: the flag set is small enough that a dependency isn't
 // earning its keep, and this keeps secret-bearing flags impossible to accidentally leak through a
 // third-party arg-parser's own debug/verbose logging.
 interface Args {
   stdio: boolean;
+  http: boolean;
+  httpPort?: number;
+  httpHost?: string;
   help: boolean;
   root?: string;
   config?: string;
@@ -43,6 +48,9 @@ Usage:
 
 Options:
   --stdio                        Start the MCP server on stdio (required to actually serve)
+  --http                         Start the authenticated MCP server over HTTP
+  --http-port <n>                HTTP listen port (default: 8787)
+  --http-host <host>             HTTP listen host (default: 127.0.0.1)
   --root <path>                  Repository root to index (default: current directory)
   --config <path>                Load a JSON config file
   --config-json <json>           Inline JSON config, merged over --config
@@ -59,7 +67,7 @@ Config resolution, lowest to highest precedence:
 `;
 
 function parseArgs(argv: string[]): Args {
-  const args: Args = { stdio: false, help: false };
+  const args: Args = { stdio: false, http: false, help: false };
   for (let i = 0; i < argv.length; i++) {
     const token = argv[i];
     switch (token) {
@@ -69,6 +77,15 @@ function parseArgs(argv: string[]): Args {
         break;
       case "--stdio":
         args.stdio = true;
+        break;
+      case "--http":
+        args.http = true;
+        break;
+      case "--http-port":
+        args.httpPort = Number(argv[++i]);
+        break;
+      case "--http-host":
+        args.httpHost = argv[++i];
         break;
       case "--root":
         args.root = argv[++i];
@@ -187,8 +204,8 @@ async function main(): Promise<void> {
     return;
   }
 
-  if (!args.stdio) {
-    process.stderr.write("lci-mcp: no transport selected; pass --stdio\n");
+  if (!args.stdio && !args.http) {
+    process.stderr.write("lci-mcp: no transport selected; pass --stdio or --http\n");
     process.exitCode = 1;
     return;
   }
@@ -268,7 +285,7 @@ async function main(): Promise<void> {
     };
   }
 
-  const server = createServer({
+  const context = {
     codeIndex,
     embeddingClient,
     config,
@@ -279,7 +296,25 @@ async function main(): Promise<void> {
     defaultRepositoryId,
     allowImplicitRepository,
     listRepositories,
-  });
+  };
+  if (args.http) {
+    const bearerToken = process.env.LCI_HTTP_BEARER_TOKEN;
+    if (!bearerToken) throw new Error("LCI_HTTP_BEARER_TOKEN is required for --http");
+    const httpServer = startHttpMcpServer({
+      host: args.httpHost ?? "127.0.0.1",
+      port: args.httpPort ?? 8787,
+      bearerToken,
+      createMcpServer: () => createServer(context),
+      onReady: (address) => logger.info("MCP HTTP server ready", { address }),
+    });
+    const shutdown = () => {
+      void Promise.all([workerRegistry?.closeAll(), waitForBackgroundIndexJob()]).finally(() => httpServer.close());
+    };
+    process.once("SIGINT", shutdown);
+    process.once("SIGTERM", shutdown);
+    return;
+  }
+  const server = createServer(context);
   const transport = new StdioServerTransport();
   await server.connect(transport);
   logger.info("MCP server ready");
