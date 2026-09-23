@@ -1,7 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 
-import { type AppContext, repositoryEnvelope, resolveToolWorker, type ToolWorker } from "../context.js";
+import { type AppContext, embeddingFingerprintFor, repositoryEnvelope, resolveToolWorker, type ToolWorker } from "../context.js";
 import { startBackgroundIndexJob } from "../indexingJob.js";
 import { textResult } from "../toolResult.js";
 
@@ -20,9 +20,7 @@ export function registerIndexTool(server: McpServer, ctx: AppContext): void {
     },
     async ({ repository_id }) => {
       const { worker, explicit } = await resolveToolWorker(ctx, repository_id, "index");
-      const embeddingFingerprint = worker.embeddingClient
-        ? `${ctx.config.embedding.model}:${ctx.config.embedding.dimensions ?? "default"}`
-        : undefined;
+      const embeddingFingerprint = embeddingFingerprintFor(ctx, worker);
 
       const handle = await worker.codeIndex.beginIndex({
         embeddingFingerprint,

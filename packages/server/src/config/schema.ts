@@ -21,6 +21,8 @@ export const EmbeddingConfigSchema = z.object({
   dimensions: z.number().int().positive().optional(),
   requestTimeoutMs: z.number().int().positive().default(30_000),
   batchSize: z.number().int().positive().default(64),
+  maxInputTokens: z.number().int().positive().default(8_192),
+  maxInputChars: z.number().int().positive().optional(),
   maxRetries: z.number().int().nonnegative().default(3),
   auth: EmbeddingAuthSchema.default({}),
 });

@@ -230,6 +230,8 @@ async function main(): Promise<void> {
         dimensions: config.embedding.dimensions,
         requestTimeoutMs: config.embedding.requestTimeoutMs,
         maxRetries: config.embedding.maxRetries,
+        maxInputTokens: config.embedding.maxInputTokens,
+        maxInputChars: config.embedding.maxInputChars,
         logger,
         headersProvider: async () => {
           const headers: Record<string, string> = {};

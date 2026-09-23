@@ -72,6 +72,15 @@ export async function resolveToolWorker(
   };
 }
 
+// Identifies the embedding model/config a worker would build with now; `undefined` when the
+// worker has no embedding client (structural-only). Shared by lci_index and lci_index_status so
+// the "expected" fingerprint used to (re)build and the one used to detect staleness never drift.
+export function embeddingFingerprintFor(ctx: AppContext, worker: ToolWorker): string | undefined {
+  return worker.embeddingClient
+    ? `${ctx.config.embedding.model}:${ctx.config.embedding.dimensions ?? "default"}`
+    : undefined;
+}
+
 export function repositoryEnvelope<T>(
   worker: ToolWorker,
   results: T,

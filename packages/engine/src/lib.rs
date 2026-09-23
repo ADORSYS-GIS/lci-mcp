@@ -64,11 +64,15 @@ impl CodeIndex {
     }
 
     #[napi]
-    pub async fn status(&self) -> Result<IndexStatus> {
+    pub async fn status(&self, expected_embedding_fingerprint: Option<String>) -> Result<IndexStatus> {
         let store = Arc::clone(&self.store);
         let repo_root = self.repo_root.clone();
         let database_path = self.database_path.clone();
-        blocking(move || index_coordinator::status(&store, &repo_root, &database_path).map(Into::into)).await
+        blocking(move || {
+            index_coordinator::status(&store, &repo_root, &database_path, expected_embedding_fingerprint.as_deref())
+                .map(Into::into)
+        })
+        .await
     }
 
     #[napi]

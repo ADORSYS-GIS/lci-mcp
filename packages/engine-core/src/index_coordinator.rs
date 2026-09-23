@@ -122,7 +122,17 @@ fn generation_stats(store: &SqliteStore, generation_id: &str) -> anyhow::Result<
 /// priority over an older `ACTIVE` one, so the prior index stays usable while a rebuild runs. A
 /// `FAILED` latest attempt is only reported as `failed` when nothing has ever gone `ACTIVE` —
 /// otherwise the last good index is still `done`/usable.
-pub fn status(store: &SqliteStore, repo_root: &Path, database_path: &str) -> anyhow::Result<IndexStatus> {
+///
+/// `expected_embedding_fingerprint` is the fingerprint the caller would use to (re)build now.
+/// When it is `Some` and the generation's stored fingerprint differs (including a structural-only
+/// `None`), the index is reported stale so callers rebuild to obtain vectors for the new model.
+/// `None` means embeddings are not configured, so an existing embedded index is never made stale.
+pub fn status(
+    store: &SqliteStore,
+    repo_root: &Path,
+    database_path: &str,
+    expected_embedding_fingerprint: Option<&str>,
+) -> anyhow::Result<IndexStatus> {
     let repo_info = repository::inspect(repo_root)?;
     let active = store.get_active_generation()?;
     let building = store.get_most_recent_generation_in_state("BUILDING")?;
@@ -137,19 +147,19 @@ pub fn status(store: &SqliteStore, repo_root: &Path, database_path: &str) -> any
             active.is_some(),
             active.as_ref().map(|g| g.head_sha.clone()),
             stats,
-            if building.extractor_fingerprint != extractor_fingerprint() {
-                vec!["extractor_fingerprint_changed".to_string()]
-            } else {
-                vec![]
-            },
+            fingerprint_stale_reasons(
+                &building.extractor_fingerprint,
+                building.embedding_fingerprint.as_deref(),
+                expected_embedding_fingerprint,
+            ),
         )
     } else if let Some(active) = &active {
         let stats = generation_stats(store, &active.id)?;
-        let extra = if active.extractor_fingerprint != extractor_fingerprint() {
-            vec!["extractor_fingerprint_changed".to_string()]
-        } else {
-            vec![]
-        };
+        let extra = fingerprint_stale_reasons(
+            &active.extractor_fingerprint,
+            active.embedding_fingerprint.as_deref(),
+            expected_embedding_fingerprint,
+        );
         ("done".to_string(), true, Some(active.head_sha.clone()), stats, extra)
     } else if store.get_most_recent_generation_in_state("FAILED")?.is_some() {
         ("failed".to_string(), false, None, IndexStats { files: 0, chunks: 0, nodes: 0, edges: 0 }, vec![])
@@ -180,6 +190,26 @@ pub fn status(store: &SqliteStore, repo_root: &Path, database_path: &str) -> any
         },
         stats,
     })
+}
+
+/// Collects fingerprint-based stale reasons shared by the building and active branches.
+fn fingerprint_stale_reasons(
+    generation_extractor_fingerprint: &str,
+    generation_embedding_fingerprint: Option<&str>,
+    expected_embedding_fingerprint: Option<&str>,
+) -> Vec<String> {
+    let mut reasons = Vec::new();
+    if generation_extractor_fingerprint != extractor_fingerprint() {
+        reasons.push("extractor_fingerprint_changed".to_string());
+    }
+    // Only when embeddings are configured (`expected` is `Some`) does a mismatch matter — this
+    // covers a structural-only index (`None`) and a changed embedding model alike.
+    if let Some(expected) = expected_embedding_fingerprint {
+        if generation_embedding_fingerprint != Some(expected) {
+            reasons.push("embedding_fingerprint_changed".to_string());
+        }
+    }
+    reasons
 }
 
 #[cfg(test)]
@@ -267,7 +297,7 @@ mod tests {
         let handle = begin_index(&store, dir.path(), "owner-a", &options).await.unwrap();
 
         // Not committed yet -> a BUILDING generation exists, no ACTIVE one yet.
-        let s = status(&store, dir.path(), "db.sqlite").unwrap();
+        let s = status(&store, dir.path(), "db.sqlite", None).unwrap();
         assert_eq!(s.state, "in_progress");
         assert!(!s.usable, "no ACTIVE generation exists yet, so nothing is usable");
 
@@ -276,9 +306,28 @@ mod tests {
         put_embeddings(&store, &handle.generation_id, &values, 2).unwrap();
         commit_index(&store, &handle.generation_id, "owner-a").unwrap();
 
-        let s2 = status(&store, dir.path(), "db.sqlite").unwrap();
+        let s2 = status(&store, dir.path(), "db.sqlite", None).unwrap();
         assert_eq!(s2.state, "done");
         assert!(s2.usable);
+    }
+
+    #[tokio::test]
+    async fn status_reports_embedding_fingerprint_changed_when_the_configured_model_differs() {
+        let dir = fixture_repo();
+        let store = SqliteStore::open_in_memory().unwrap();
+        // Build a structural-only index (no embedding fingerprint stored).
+        let handle = begin_index(&store, dir.path(), "owner-a", &StartIndexOptions::default()).await.unwrap();
+        commit_index(&store, &handle.generation_id, "owner-a").unwrap();
+
+        // With embeddings now configured, the structural-only index must be reported stale.
+        let s = status(&store, dir.path(), "db.sqlite", Some("model-x:1536")).unwrap();
+        assert_eq!(s.state, "done");
+        assert!(s.usable, "a structural-only index stays usable, only stale");
+        assert!(s.stale_reasons.iter().any(|r| r == "embedding_fingerprint_changed"));
+
+        // Without embeddings configured, the same index is not stale for embeddings.
+        let s_none = status(&store, dir.path(), "db.sqlite", None).unwrap();
+        assert!(!s_none.stale_reasons.iter().any(|r| r == "embedding_fingerprint_changed"));
     }
 
     #[tokio::test]
@@ -292,7 +341,7 @@ mod tests {
         store.create_building_generation("g2", "sha2", false, "fp", None).unwrap();
         store.with_conn(|conn| lease::acquire(conn, "g2", "owner-a", 1)).unwrap();
 
-        let s = status(&store, dir.path(), "db.sqlite").unwrap();
+        let s = status(&store, dir.path(), "db.sqlite", None).unwrap();
         assert_eq!(s.state, "in_progress");
         assert!(s.usable, "the prior ACTIVE generation must still be usable while a rebuild is in flight");
     }
@@ -304,7 +353,7 @@ mod tests {
         let handle = begin_index(&store, dir.path(), "owner-a", &StartIndexOptions::default()).await.unwrap();
         fail_index(&store, &handle.generation_id, "boom", "owner-a").unwrap();
 
-        let s = status(&store, dir.path(), "db.sqlite").unwrap();
+        let s = status(&store, dir.path(), "db.sqlite", None).unwrap();
         assert_eq!(s.state, "failed");
         assert!(!s.usable);
     }

@@ -11,6 +11,9 @@ function jsonResponse(status: number, body: unknown, headers: Record<string, str
   return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", ...headers } });
 }
 
+const TOKEN_LIMIT_MESSAGE =
+  "You passed 40961 input tokens and requested 0 output tokens. However, the model's context length is only 40960 tokens, resulting in a maximum input length of 40960 tokens.";
+
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
@@ -186,5 +189,106 @@ describe("EmbeddingClient", () => {
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     const body = JSON.parse(init.body as string);
     expect(body.encoding_format).toBe("float");
+  });
+
+  it("splits a batch into multiple requests to stay within maxInputTokens, preserving order", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, { data: [{ index: 0, embedding: [1] }, { index: 1, embedding: [2] }] }))
+      .mockResolvedValueOnce(jsonResponse(200, { data: [{ index: 0, embedding: [3] }] }));
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new EmbeddingClient({
+      baseUrl: "http://x",
+      model: "m",
+      requestTimeoutMs: 1000,
+      maxRetries: 0,
+      maxInputTokens: 2, // ~8 chars total per request at 4 chars/token
+      headersProvider: async () => ({}),
+      logger: silentLogger(),
+    });
+    // Each input ~1 token (<=4 chars); budget 2 => two per request, so 3 inputs => 2 requests.
+    const result = await client.embed(["aa", "bb", "cc"]);
+    expect(result).toEqual([[1], [2], [3]]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const firstBody = JSON.parse((fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string);
+    const secondBody = JSON.parse((fetchMock.mock.calls[1] as [string, RequestInit])[1].body as string);
+    expect(firstBody.input).toEqual(["aa", "bb"]);
+    expect(secondBody.input).toEqual(["cc"]);
+  });
+
+  it("truncates a single input longer than maxInputChars before sending", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ index: 0, embedding: [1] }] }));
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new EmbeddingClient({
+      baseUrl: "http://x",
+      model: "m",
+      requestTimeoutMs: 1000,
+      maxRetries: 0,
+      maxInputChars: 10,
+      headersProvider: async () => ({}),
+      logger: silentLogger(),
+    });
+    await client.embed(["x".repeat(50)]);
+    const body = JSON.parse((fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string);
+    expect(body.input).toEqual(["x".repeat(10)]);
+  });
+
+  it("truncates a single input to the maxInputTokens budget even when maxInputChars is unset", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ index: 0, embedding: [1] }] }));
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new EmbeddingClient({
+      baseUrl: "http://x",
+      model: "m",
+      requestTimeoutMs: 1000,
+      maxRetries: 0,
+      maxInputTokens: 4, // ~12 chars at 3 chars/token; without this a giant chunk would blow the context window
+      headersProvider: async () => ({}),
+      logger: silentLogger(),
+    });
+    await client.embed(["y".repeat(100)]);
+    const body = JSON.parse((fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string);
+    expect(body.input).toEqual(["y".repeat(12)]);
+  });
+
+  it("truncates and retries a single input the server rejects for exceeding the token context", async () => {
+    const big = "x".repeat(1000);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(400, { error: { message: TOKEN_LIMIT_MESSAGE } }))
+      .mockResolvedValueOnce(jsonResponse(200, { data: [{ index: 0, embedding: [1] }] }));
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new EmbeddingClient({
+      baseUrl: "http://x",
+      model: "m",
+      requestTimeoutMs: 1000,
+      maxRetries: 0,
+      headersProvider: async () => ({}),
+      logger: silentLogger(),
+    });
+    const result = await client.embed([big]);
+    expect(result).toEqual([[1]]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const retryBody = JSON.parse((fetchMock.mock.calls[1] as [string, RequestInit])[1].body as string);
+    expect(retryBody.input[0].length).toBeLessThan(big.length);
+  });
+
+  it("subdivides a batch the server rejects for length and retries each half", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(400, { error: { message: TOKEN_LIMIT_MESSAGE } }))
+      .mockResolvedValueOnce(jsonResponse(200, { data: [{ index: 0, embedding: [1] }] }))
+      .mockResolvedValueOnce(jsonResponse(200, { data: [{ index: 0, embedding: [2] }] }));
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new EmbeddingClient({
+      baseUrl: "http://x",
+      model: "m",
+      requestTimeoutMs: 1000,
+      maxRetries: 0,
+      headersProvider: async () => ({}),
+      logger: silentLogger(),
+    });
+    const result = await client.embed(["aa", "bb"]);
+    expect(result).toEqual([[1], [2]]);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 });

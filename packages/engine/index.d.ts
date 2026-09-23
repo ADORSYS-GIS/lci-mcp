@@ -2,7 +2,7 @@
 /* eslint-disable */
 export declare class CodeIndex {
   static open(options: OpenIndexOptions): Promise<CodeIndex>
-  status(): Promise<IndexStatus>
+  status(expectedEmbeddingFingerprint?: string | undefined | null): Promise<IndexStatus>
   beginIndex(options: StartIndexOptions): Promise<IndexGenerationHandle>
   nextEmbeddingBatch(generationId: string, limit: number): Promise<Array<EmbeddingBatchItem>>
   putEmbeddings(generationId: string, values: Array<EmbeddingResult>, dimensions: number): Promise<void>
