@@ -701,8 +701,8 @@ dependencies = [
 
 [[package]]
 name = "lci-codegraph"
-version = "0.2.0"
-source = "git+https://github.com/ADORSYS-GIS/lci-codegraph.git?rev=a283fee81c96be8509dc7d4f8e20450f31155a17#a283fee81c96be8509dc7d4f8e20450f31155a17"
+version = "0.3.0"
+source = "git+https://github.com/ADORSYS-GIS/lci-codegraph.git?rev=a031b0f9fb040720289c0a8a01d419bb630be985#a031b0f9fb040720289c0a8a01d419bb630be985"
 dependencies = [
  "anyhow",
  "bon",
@@ -716,26 +716,32 @@ dependencies = [
  "tracing",
  "tree-sitter",
  "tree-sitter-cstack",
+ "tree-sitter-dart",
  "tree-sitter-java",
  "tree-sitter-javascript",
+ "tree-sitter-jinja2",
+ "tree-sitter-json",
+ "tree-sitter-postgres",
  "tree-sitter-python",
  "tree-sitter-rust",
+ "tree-sitter-scala",
+ "tree-sitter-swift",
  "tree-sitter-typescript",
  "ureq",
 ]
 
 [[package]]
 name = "lci-codegraph-model"
-version = "0.2.0"
-source = "git+https://github.com/ADORSYS-GIS/lci-codegraph.git?rev=a283fee81c96be8509dc7d4f8e20450f31155a17#a283fee81c96be8509dc7d4f8e20450f31155a17"
+version = "0.3.0"
+source = "git+https://github.com/ADORSYS-GIS/lci-codegraph.git?rev=a031b0f9fb040720289c0a8a01d419bb630be985#a031b0f9fb040720289c0a8a01d419bb630be985"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "lci-codegraph-spring"
-version = "0.2.0"
-source = "git+https://github.com/ADORSYS-GIS/lci-codegraph.git?rev=a283fee81c96be8509dc7d4f8e20450f31155a17#a283fee81c96be8509dc7d4f8e20450f31155a17"
+version = "0.3.0"
+source = "git+https://github.com/ADORSYS-GIS/lci-codegraph.git?rev=a031b0f9fb040720289c0a8a01d419bb630be985#a031b0f9fb040720289c0a8a01d419bb630be985"
 dependencies = [
  "lci-codegraph-model",
  "tree-sitter",
@@ -1552,6 +1558,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "tree-sitter-dart"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "325dd1e24ee9ee21111e9c43680ae7d6010aaa9f282b048a99b9c7163c1cf553"
+dependencies = [
+ "cc",
+ "tree-sitter-language",
+]
+
+[[package]]
 name = "tree-sitter-java"
 version = "0.23.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1572,10 +1588,40 @@ dependencies = [
 ]
 
 [[package]]
+name = "tree-sitter-jinja2"
+version = "0.0.16"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "124f888283869ed15d544d840b908551d9a5d58c326395236df2492873ee1f86"
+dependencies = [
+ "cc",
+ "tree-sitter-language",
+]
+
+[[package]]
+name = "tree-sitter-json"
+version = "0.24.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4d727acca406c0020cffc6cf35516764f36c8e3dc4408e5ebe2cb35a947ec471"
+dependencies = [
+ "cc",
+ "tree-sitter-language",
+]
+
+[[package]]
 name = "tree-sitter-language"
 version = "0.1.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ca0d1bf6fdd806e43ae5198f82f527056d359def39e54e67a0f478ac09dac081"
+
+[[package]]
+name = "tree-sitter-postgres"
+version = "1.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2552ec55c9813f358da70926587b2bbfceff6a7b75456b2ddf8abfb223dcf3a7"
+dependencies = [
+ "cc",
+ "tree-sitter-language",
+]
 
 [[package]]
 name = "tree-sitter-python"
@@ -1592,6 +1638,26 @@ name = "tree-sitter-rust"
 version = "0.24.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "439e577dbe07423ec2582ac62c7531120dbfccfa6e5f92406f93dd271a120e45"
+dependencies = [
+ "cc",
+ "tree-sitter-language",
+]
+
+[[package]]
+name = "tree-sitter-scala"
+version = "0.26.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "24e0ab4505990bfe30051761d40a7bf4033ce5a81c9eda9e20e987a5cdc84826"
+dependencies = [
+ "cc",
+ "tree-sitter-language",
+]
+
+[[package]]
+name = "tree-sitter-swift"
+version = "0.7.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fe36052155b9dd69ca82b3b8f1b4ccfb2d867125ac1a4db1dd7331829242668c"
 dependencies = [
  "cc",
  "tree-sitter-language",
