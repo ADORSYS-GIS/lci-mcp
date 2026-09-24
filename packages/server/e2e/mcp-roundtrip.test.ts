@@ -68,7 +68,7 @@ describe("MCP stdio round trip against the real built CLI + engine", () => {
     rmSync(databaseRoot, { recursive: true, force: true });
   });
 
-  it("lists all nine tools with schemas", async () => {
+  it("lists all ten tools with schemas", async () => {
     const result = (await client.request("tools/list")) as {
       tools: Array<{ name: string; inputSchema?: { properties?: Record<string, unknown> } }>;
     };
@@ -81,6 +81,7 @@ describe("MCP stdio round trip against the real built CLI + engine", () => {
         "lci_get_callers",
         "lci_index",
         "lci_index_status",
+        "lci_read_source",
         "lci_repositories",
         "lci_search_many",
         "lci_search",
@@ -95,6 +96,7 @@ describe("MCP stdio round trip against the real built CLI + engine", () => {
       "lci_get_callers",
       "lci_get_callees",
       "lci_explore_symbol",
+      "lci_read_source",
     ]);
     for (const tool of result.tools.filter((candidate) => scopedTools.has(candidate.name))) {
       if (tool.name === "lci_search_many") continue;

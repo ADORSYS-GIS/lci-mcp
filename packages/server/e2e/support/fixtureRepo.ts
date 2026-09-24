@@ -16,7 +16,20 @@ export function createFixtureRepo(): string {
   const run = (args: string[]) => execFileSync("git", args, { cwd: root, stdio: "ignore" });
   run(["init", "-q"]);
   run(["add", "-A"]);
-  run(["-c", "user.email=e2e@test.local", "-c", "user.name=e2e", "commit", "-q", "-m", "init"]);
+  // Pin identity and disable signing inline so the fixture commit works regardless of the developer's
+  // global git config (e.g. commit.gpgsign=true would otherwise fail with no signing key).
+  run([
+    "-c",
+    "user.email=e2e@test.local",
+    "-c",
+    "user.name=e2e",
+    "-c",
+    "commit.gpgsign=false",
+    "commit",
+    "-q",
+    "-m",
+    "init",
+  ]);
 
   return root;
 }
