@@ -19,6 +19,7 @@ export function registerRepositoriesTool(server: McpServer, ctx: AppContext): vo
           displayName: "current repository",
           enabled: true,
           queryable: true,
+          kind: "code",
           lifecycle: "ready",
         },
       ]);

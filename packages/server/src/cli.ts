@@ -12,6 +12,7 @@ import { RepositoryWorkerRegistry } from "./catalog/workerRegistry.js";
 import { loadConfig } from "./config/load.js";
 import { type AuthHelperConfig, toSafeRepositoryConfig } from "./config/schema.js";
 import { buildTemplateContext, expandTemplate } from "./config/template.js";
+import { stageDocumentSources } from "./documentSources.js";
 import { EmbeddingClient } from "./embedding/client.js";
 import { CodeIndex } from "./engine.js";
 import { startHttpMcpServer } from "./http/server.js";
@@ -213,6 +214,17 @@ async function main(): Promise<void> {
   const logger = new Logger(config.logging.level);
   logger.info("starting", { repoRoot, databasePath });
 
+  // filename → source URL per document repository, kept in memory (recomputed each startup from
+  // staging) and attached to summaries at list time so citations can link back to the document.
+  const documentLinksByRepo = new Map<string, Record<string, string>>();
+  if (config.documentSources.length > 0) {
+    const staged = await stageDocumentSources(config.documentSources, indexRoot, { logger });
+    for (const { entry, links } of staged) {
+      config.repositories.push(entry);
+      if (Object.keys(links).length > 0) documentLinksByRepo.set(entry.repositoryId, links);
+    }
+  }
+
   const multiRepository = config.repositories.length > 0;
   const codeIndex = multiRepository
     ? undefined
@@ -285,7 +297,11 @@ async function main(): Promise<void> {
     allowImplicitRepository = false;
     listRepositories = async () => {
       const document = await catalog.load();
-      return document.repositories.map(toSafeRepositorySummary);
+      return document.repositories.map((record) => {
+        const summary = toSafeRepositorySummary(record);
+        const links = documentLinksByRepo.get(record.repositoryId);
+        return links ? { ...summary, documentLinks: links } : summary;
+      });
     };
   }
 

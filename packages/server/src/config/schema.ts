@@ -56,6 +56,32 @@ export const RepositoryManifestEntrySchema = z
   .strict();
 export type RepositoryManifestEntry = z.infer<typeof RepositoryManifestEntrySchema>;
 
+// A document source (architecture/spec docs) declared by one or more local paths and/or URLs. It is
+// staged into a folder and indexed like a repository, so the existing search/hydration pipeline
+// applies unchanged. `attachTo` groups a source with a code repository for scope purposes (consumed
+// by clients). Multiple inputs let a logical set (e.g. a spec split across several PDFs) stay one source.
+export const DocumentSourceSchema = z
+  .object({
+    id: z
+      .string()
+      .regex(/^[a-z0-9](?:[a-z0-9._-]{0,62})$/, "document source id must be a stable opaque identifier")
+      .refine((value) => !value.includes(".."), "id must not contain path traversal"),
+    displayName: z.string().trim().min(1).max(200),
+    path: z.string().min(1).optional(),
+    url: z.string().url().optional(),
+    paths: z.array(z.string().min(1)).optional(),
+    urls: z.array(z.string().url()).optional(),
+    attachTo: z.string().trim().min(1).optional(),
+    enabled: z.boolean().default(true),
+    autoIndex: z.boolean().default(false),
+  })
+  .strict()
+  .refine(
+    (source) => (source.path ? 1 : 0) + (source.url ? 1 : 0) + (source.paths?.length ?? 0) + (source.urls?.length ?? 0) >= 1,
+    "each document source must set at least one of path, url, paths, or urls",
+  );
+export type DocumentSource = z.infer<typeof DocumentSourceSchema>;
+
 export const StorageConfigSchema = z.object({
   database: z.string().default("{{dataDir}}/lci-mcp/{{repoKey}}/index.sqlite"),
   catalog: z
@@ -87,6 +113,7 @@ export const LciConfigSchema = z
     index: IndexConfigSchema,
     logging: LoggingConfigSchema,
     repositories: z.array(RepositoryManifestEntrySchema).default([]),
+    documentSources: z.array(DocumentSourceSchema).default([]),
   })
   .strict();
 

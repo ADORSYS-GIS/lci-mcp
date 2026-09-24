@@ -1,4 +1,5 @@
 import type { SafeRepositorySummary } from "../catalog/schema.js";
+import { repositoryKind } from "../catalog/schema.js";
 import type { RepositoryWorker, RepositoryWorkerRegistry, WorkerOperation } from "../catalog/workerRegistry.js";
 import type { LciConfig } from "../config/schema.js";
 import type { EmbeddingClient } from "../embedding/client.js";
@@ -92,6 +93,7 @@ export function repositoryEnvelope<T>(
       remoteIdentity: worker.repository.remoteIdentity,
       enabled: worker.repository.enabled,
       queryable: worker.repository.queryable,
+      kind: repositoryKind(worker.repository.remoteUrl),
       lifecycle: worker.repository.lifecycle,
       lastIndexedAt: worker.repository.lastIndexedAt,
     },

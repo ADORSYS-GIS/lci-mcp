@@ -7,6 +7,7 @@ import { registerExploreSymbolTool } from "./tools/exploreSymbol.js";
 import { registerFindSymbolTool } from "./tools/findSymbol.js";
 import { registerIndexStatusTool } from "./tools/indexStatus.js";
 import { registerIndexTool } from "./tools/indexTool.js";
+import { registerReadSourceTool } from "./tools/readSource.js";
 import { registerRepositoriesTool } from "./tools/repositories.js";
 import { registerSearchTool } from "./tools/search.js";
 import { registerSearchManyTool } from "./tools/searchMany.js";
@@ -24,6 +25,7 @@ export function createServer(ctx: AppContext): McpServer {
   registerCallersTool(server, ctx);
   registerCalleesTool(server, ctx);
   registerExploreSymbolTool(server, ctx);
+  registerReadSourceTool(server, ctx);
 
   return server;
 }

@@ -2,6 +2,8 @@ import path from "node:path";
 
 import { z } from "zod";
 
+import { DOCUMENT_SOURCE_REMOTE_HOST } from "../documentSources.js";
+
 export const CATALOG_SCHEMA_VERSION = 1;
 
 export const RepositoryLifecycleSchema = z.enum([
@@ -84,10 +86,22 @@ export const SafeRepositorySummarySchema = z.object({
   remoteIdentity: z.string().optional(),
   enabled: z.boolean(),
   queryable: z.boolean(),
+  kind: z.enum(["code", "document"]),
+  documentLinks: z.record(z.string(), z.string()).optional(),
   lifecycle: RepositoryLifecycleSchema,
   lastIndexedAt: z.string().datetime().optional(),
 });
 export type SafeRepositorySummary = z.infer<typeof SafeRepositorySummarySchema>;
+
+// Document sources are staged under the synthetic `documents.local` remote, which is how a summary
+// distinguishes a background document source from a real code repository.
+export function repositoryKind(remoteUrl: string): "code" | "document" {
+  try {
+    return new URL(remoteUrl).hostname === DOCUMENT_SOURCE_REMOTE_HOST ? "document" : "code";
+  } catch {
+    return "code";
+  }
+}
 
 export function toSafeRepositorySummary(record: RepositoryCatalogRecord): SafeRepositorySummary {
   return {
@@ -96,6 +110,7 @@ export function toSafeRepositorySummary(record: RepositoryCatalogRecord): SafeRe
     remoteIdentity: record.remoteIdentity,
     enabled: record.enabled,
     queryable: record.queryable,
+    kind: repositoryKind(record.remoteUrl),
     lifecycle: record.lifecycle,
     lastIndexedAt: record.lastIndexedAt,
   };
