@@ -15,7 +15,6 @@ const repository = {
   checkoutPath: "/var/lib/lci/checkouts/repo-a",
   enabled: true,
   queryable: true,
-  allowedPrincipals: [],
   structuralOnly: false,
   autoIndex: false,
   lifecycle: "ready" as const,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { isValidRemoteUrl, remoteUrlHost } from "./remoteUrl.js";
+import { isValidRemoteUrl } from "./remoteUrl.js";
 
 describe("remote URL validation", () => {
   it("accepts http(s) and ssh URLs, including a git@ username", () => {
@@ -19,11 +19,5 @@ describe("remote URL validation", () => {
     expect(isValidRemoteUrl("ssh://git:secret@git.example.test/a")).toBe(false);
     expect(isValidRemoteUrl("ftp://git.example.test/a")).toBe(false);
     expect(isValidRemoteUrl("not a url")).toBe(false);
-  });
-
-  it("extracts the host for allowlist checks from every accepted form", () => {
-    expect(remoteUrlHost("https://Git.Example.Test/a")).toBe("git.example.test");
-    expect(remoteUrlHost("ssh://git@Git.Example.Test/a")).toBe("git.example.test");
-    expect(remoteUrlHost("git@Git.Example.Test:team/repo.git")).toBe("git.example.test");
   });
 });

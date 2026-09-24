@@ -12,7 +12,7 @@ export function registerRepositoriesTool(server: McpServer, ctx: AppContext): vo
       inputSchema: {},
     },
     async () => {
-      if (ctx.listRepositories) return textResult(await ctx.listRepositories(ctx.principal));
+      if (ctx.listRepositories) return textResult(await ctx.listRepositories());
       return textResult([
         {
           repositoryId: ctx.defaultRepositoryId ?? "default",

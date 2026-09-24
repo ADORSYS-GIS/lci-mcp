@@ -105,7 +105,6 @@ export class RepositoryCatalogStore {
             remoteIdentity: want.remoteIdentity,
             checkoutPath: want.checkoutPath,
             enabled: want.enabled,
-            allowedPrincipals: want.allowedPrincipals,
             structuralOnly: want.structuralOnly,
             autoIndex: want.autoIndex,
             queryable: want.enabled ? (resurrected ? false : existing.queryable) : false,

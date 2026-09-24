@@ -20,16 +20,3 @@ export function isValidRemoteUrl(value: string): boolean {
 
 export const REMOTE_URL_MESSAGE =
   "remoteUrl must be an http(s)/ssh URL or scp-style git@host:path remote, without embedded credentials";
-
-/** Extracts a lowercase host for allowlist checks from any accepted remote form. */
-export function remoteUrlHost(value: string): string | undefined {
-  if (value.includes("://")) {
-    try {
-      return new URL(value).hostname.toLowerCase();
-    } catch {
-      return undefined;
-    }
-  }
-  const match = /^(?:[A-Za-z0-9._-]+@)?([A-Za-z0-9._-]+):/.exec(value);
-  return match ? match[1]!.toLowerCase() : undefined;
-}

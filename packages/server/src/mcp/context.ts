@@ -29,9 +29,7 @@ export interface AppContext {
   catalog?: RepositoryCatalogStore;
   defaultRepositoryId?: string;
   allowImplicitRepository?: boolean;
-  /** Identity of the calling client; per session over HTTP, or LCI_PRINCIPAL over stdio. */
-  principal?: string;
-  listRepositories?: (principal?: string) => Promise<SafeRepositorySummary[]>;
+  listRepositories?: () => Promise<SafeRepositorySummary[]>;
 }
 
 export async function resolveToolWorker(
@@ -66,7 +64,7 @@ async function resolveToolWorkerRaw(
       throw new Error("repository_id is required for this MCP server");
     }
     return {
-      worker: await ctx.workerRegistry.resolve(selectedId, operation, ctx.principal),
+      worker: await ctx.workerRegistry.resolve(selectedId, operation),
       explicit: repositoryId !== undefined,
     };
   }
@@ -89,7 +87,6 @@ async function resolveToolWorkerRaw(
         checkoutPath: ctx.repoRoot,
         enabled: true,
         queryable: true,
-        allowedPrincipals: [],
         structuralOnly: ctx.embeddingClient === undefined,
         autoIndex: false,
         lifecycle: "ready",

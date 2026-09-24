@@ -9,7 +9,6 @@ export const CATALOG_SCHEMA_VERSION = 1;
 
 export const RepositoryLifecycleSchema = z.enum([
   "registered",
-  "provisioning",
   "indexing",
   "ready",
   "stale",
@@ -41,7 +40,6 @@ export const RepositoryCatalogRecordSchema = z.object({
   checkoutPath: AbsoluteCheckoutPathSchema,
   enabled: z.boolean().default(true),
   queryable: z.boolean().default(false),
-  allowedPrincipals: z.array(z.string().trim().min(1)).default([]),
   structuralOnly: z.boolean().default(false),
   autoIndex: z.boolean().default(false),
   lifecycle: RepositoryLifecycleSchema.default("registered"),
@@ -130,15 +128,13 @@ export function migrateCatalogDocument(value: unknown): CatalogDocument {
 }
 
 const lifecycleTransitions: Record<RepositoryLifecycle, readonly RepositoryLifecycle[]> = {
-  // A manifest that ships its own checkouts indexes straight from `registered`; provisioning is only
-  // an intermediate step for deployments that clone from a remote.
-  registered: ["provisioning", "indexing", "disabled", "removed"],
-  provisioning: ["registered", "indexing", "failed", "disabled", "removed"],
+  // Checkouts are provided locally (manifest checkoutPath); indexing runs straight from `registered`.
+  registered: ["indexing", "disabled", "removed"],
   indexing: ["ready", "stale", "failed", "disabled", "removed"],
   ready: ["indexing", "stale", "disabled", "removed"],
   stale: ["indexing", "ready", "failed", "disabled", "removed"],
-  failed: ["registered", "provisioning", "indexing", "disabled", "removed"],
-  disabled: ["registered", "provisioning", "removed"],
+  failed: ["registered", "indexing", "disabled", "removed"],
+  disabled: ["registered", "removed"],
   removed: [],
 };
 

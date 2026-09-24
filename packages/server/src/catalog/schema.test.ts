@@ -57,7 +57,7 @@ describe("catalog migration and lifecycle", () => {
   });
 
   it("allows normal indexing transitions and rejects unsafe jumps", () => {
-    expect(() => assertLifecycleTransition("registered", "provisioning")).not.toThrow();
+    expect(() => assertLifecycleTransition("registered", "indexing")).not.toThrow();
     expect(() => assertLifecycleTransition("indexing", "ready")).not.toThrow();
     expect(() => assertLifecycleTransition("registered", "ready")).toThrow(/invalid repository lifecycle transition/);
   });

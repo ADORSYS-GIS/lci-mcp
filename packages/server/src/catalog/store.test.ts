@@ -13,7 +13,6 @@ const repository = {
   checkoutPath: "/var/lib/lci/checkouts/repo-a",
   enabled: true,
   queryable: false,
-  allowedPrincipals: [],
   structuralOnly: false,
   autoIndex: false,
   lifecycle: "registered" as const,
@@ -53,9 +52,9 @@ describe("RepositoryCatalogStore", () => {
   it("enforces lifecycle transitions and updates timestamps", async () => {
     const { store } = await makeStore();
     await store.add(repository);
-    await store.transition("repo-a", "provisioning");
-    expect((await store.get("repo-a"))?.lifecycle).toBe("provisioning");
-    await expect(store.transition("repo-a", "ready")).rejects.toThrow("invalid repository lifecycle transition");
+    await store.transition("repo-a", "indexing");
+    expect((await store.get("repo-a"))?.lifecycle).toBe("indexing");
+    await expect(store.transition("repo-a", "registered")).rejects.toThrow("invalid repository lifecycle transition");
   });
 
   it("writes restrictive file permissions where supported", async () => {
@@ -72,10 +71,10 @@ describe("RepositoryCatalogStore", () => {
 
     await store.transition("repo-a", "indexing");
     await store.transition("repo-a", "ready", { queryable: true, lastIndexedAt: "2026-09-23T00:00:00.000Z" });
-    await store.reconcileManifest([{ ...repository, displayName: "Renamed", allowedPrincipals: ["team-a"] }]);
+    await store.reconcileManifest([{ ...repository, displayName: "Renamed", structuralOnly: true }]);
     const updated = await store.get("repo-a");
     expect(updated?.displayName).toBe("Renamed");
-    expect(updated?.allowedPrincipals).toEqual(["team-a"]);
+    expect(updated?.structuralOnly).toBe(true);
     expect(updated?.lifecycle).toBe("ready");
     expect(updated?.queryable).toBe(true);
     expect(updated?.lastIndexedAt).toBe("2026-09-23T00:00:00.000Z");
