@@ -79,22 +79,41 @@ jobs:
         working-directory: packages/server
         run: pnpm smoke:native
 
+      - name: Scaffold per-platform npm packages
+        working-directory: packages/engine
+        # --skip-optional-publish: the publish job downloads these packages and publishes them
+        # itself — this step only prepares files and wires optionalDependencies, it never publishes.
+        # --no-gh-release: binaries reach users as npm optionalDependencies, not GitHub release
+        # assets, so no release needs creating here.
+        run: |
+          pnpm exec napi create-npm-dirs
+          pnpm exec napi artifacts --output-dir .
+          pnpm exec napi prepublish -t npm --skip-optional-publish --no-gh-release
+
       - name: Build the MCP server bundle
         working-directory: packages/server
+        # packages/engine's optionalDependencies now name platform packages that don't carry this
+        # release's version on the registry yet, so pnpm can't resolve them; CI=false lets pnpm
+        # install leniently around that instead of refusing to run at all.
         run: pnpm build
+        env:
+          CI: "false"
 
-      - name: Pack both packages into publishable tarballs
-        # The native package carries every target's binary directly: the build loop above writes
-        # each `.node` into `packages/engine/`, and that package's `files` glob picks them all up,
-        # so the generated loader in `index.js` finds the host platform's binary inside the package
-        # it was installed from. `pnpm pack` (not `npm pack`) is load-bearing — it resolves the
-        # server package's `workspace:*` dependency on the native package to a real version, which
-        # plain `npm` has no notion of.
+      - name: Pack every package into publishable tarballs
+        # `pnpm pack` (not `npm pack`) for the two workspace packages is load-bearing: it resolves
+        # the server package's `workspace:*` dependency on the native package to a real version,
+        # which plain `npm` has no notion of. The platform packages carry no internal dependencies,
+        # so plain `npm pack` is enough for them.
         run: |
           set -euo pipefail
-          mkdir -p dist-packages/native dist-packages/server
+          mkdir -p dist-packages/platforms dist-packages/native dist-packages/server
+          for dir in packages/engine/npm/*/; do
+            (cd "$dir" && npm pack --pack-destination "$GITHUB_WORKSPACE/dist-packages/platforms")
+          done
           pnpm --filter @vymalo/lightbridge-code-intelligence-native pack --pack-destination dist-packages/native
           pnpm --filter @vymalo/lightbridge-code-intelligence-mcp pack --pack-destination dist-packages/server
+        env:
+          CI: "false"
 
       - name: Upload packed tarballs
         uses: actions/upload-artifact@v7
@@ -126,8 +145,67 @@ jobs:
           name: npm-packages
           path: dist-packages
 
+      - name: Publish every platform package
+        # Attempts every platform tarball and only fails at the end, rather than aborting on the
+        # first one — so one platform's publish issue never blocks the packages beside it, and the
+        # native and server packages below still publish regardless.
+        run: |
+          set -uo pipefail
+          failed=()
+          for tarball in dist-packages/platforms/*.tgz; do
+            name="$(tar xzfO "$tarball" package/package.json | node -p 'JSON.parse(require("fs").readFileSync(0)).name')"
+            echo "::group::npm publish $name"
+            if ! npm publish "$tarball" --access public; then
+              failed+=("$name")
+            fi
+            echo "::endgroup::"
+          done
+          if [ "${#failed[@]}" -gt 0 ]; then
+            echo "::error::platform package publish failed for: ${failed[*]}"
+            echo "PLATFORM_PUBLISH_FAILED=${failed[*]}" >> "$GITHUB_ENV"
+          fi
+
       - name: Publish the native package
         run: npm publish dist-packages/native/*.tgz --access public
 
       - name: Publish the MCP server package
         run: npm publish dist-packages/server/*.tgz --access public
+
+      - name: Verify every published package is visible on the registry
+        # `npm publish` exiting 0 means the registry accepted the tarball, not that it's installable
+        # yet — polls the registry directly rather than trusting the exit code alone.
+        run: |
+          set -uo pipefail
+          names=()
+          for tarball in dist-packages/platforms/*.tgz dist-packages/native/*.tgz dist-packages/server/*.tgz; do
+            names+=("$(tar xzfO "$tarball" package/package.json | node -p 'JSON.parse(require("fs").readFileSync(0)).name')")
+          done
+          version="$(tar xzfO dist-packages/native/*.tgz package/package.json | node -p 'JSON.parse(require("fs").readFileSync(0)).version')"
+          deadline=$((SECONDS + 360))
+          missing=("${names[@]}")
+          while [ "${#missing[@]}" -gt 0 ] && [ "$SECONDS" -lt "$deadline" ]; do
+            still=()
+            for name in "${missing[@]}"; do
+              code=$(curl -s -o /dev/null -w '%{http_code}' "https://registry.npmjs.org/${name}/${version}" || echo 000)
+              if [ "$code" = "200" ]; then echo "✓ ${name}@${version} visible"; else still+=("$name"); fi
+            done
+            missing=("${still[@]+"${still[@]}"}")
+            [ "${#missing[@]}" -gt 0 ] && sleep 30
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::not visible on registry.npmjs.org after 6 minutes at ${version}: ${missing[*]}"
+            echo "PACKAGES_NOT_VISIBLE=${missing[*]}" >> "$GITHUB_ENV"
+          fi
+
+      - name: Fail the job if any platform package did not publish or become visible
+        if: always()
+        run: |
+          if [ -n "${PLATFORM_PUBLISH_FAILED:-}" ]; then
+            echo "::error::these platform packages did not publish: $PLATFORM_PUBLISH_FAILED"
+            exit 1
+          fi
+          if [ -n "${PACKAGES_NOT_VISIBLE:-}" ]; then
+            echo "::error::these packages were accepted but are not visible on the registry: $PACKAGES_NOT_VISIBLE"
+            exit 1
+          fi
+          echo "all packages published and visible on the registry"
