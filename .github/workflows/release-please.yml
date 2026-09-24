@@ -1,0 +1,57 @@
+# On every push to main, release-please keeps one release PR open that accumulates the pending
+# CHANGELOG (grouped by conventional-commit type) and the next version, written into both
+# packages/engine/package.json and packages/server/package.json so they always release together.
+# Merging that PR tags `v<version>`, cuts a GitHub Release, and starts the npm publish.
+#
+# Pre-1.0 policy: `feat` → minor, `fix`/`perf` → patch, breaking (`feat!` / `BREAKING CHANGE`) →
+# minor, capped below 1.0.0 by `bump-minor-pre-major`. Version state lives in
+# .release-please-manifest.json; changelog sections and policy in release-please-config.json.
+name: Release Please
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-please-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    name: Maintain the release PR and cut releases
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - name: Update the release PR, or tag and release a merged one
+        id: release
+        uses: googleapis/release-please-action@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  publish:
+    name: Publish the release to npm
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Run the npm release workflow on the new tag
+        # A tag created with GITHUB_TOKEN starts no workflow runs, so publish.yml's tag trigger never
+        # fires for it; workflow_dispatch is an event that token can still start. Dispatching on the
+        # tag runs publish.yml as its own run exactly as a pushed tag would: its version check matches
+        # the tag against both packages, and npm trusted publishing sees the same workflow.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.release-please.outputs.tag_name }}
+        run: gh workflow run publish.yml --repo "$GITHUB_REPOSITORY" --ref "$TAG"
