@@ -4,55 +4,31 @@ on:
   push:
     tags: ["v*.*.*"]
   workflow_dispatch:
+    inputs:
+      rehearsal:
+        description: "Build and pack every target, but write to no registry"
+        required: true
+        default: false
+        type: boolean
 
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  build:
-    name: Build every native target and pack for publishing
+  preflight:
+    name: Check the version being released
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: >-
-            x86_64-unknown-linux-gnu,
-            aarch64-unknown-linux-gnu
-
-      - name: Cache Cargo artifacts
-        uses: Swatinem/rust-cache@v2
-
-      - name: Install zig (cross-compile toolchain for non-host targets)
-        uses: mlugg/setup-zig@v2
-        with:
-          # cargo-zigbuild's Apple-target linker-argument handling for zig 0.16+ mismatches the
-          # split `-Wl,-exported_symbols_list`/`-Wl,<path>` pair current rustc emits; the last
-          # release before that behavior change builds every target cleanly.
-          version: 0.15.2
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v6
-
-      - name: Install Node.js
-        uses: actions/setup-node@v7
-        with:
-          node-version: 24
-          cache: pnpm
-
-      - name: Install workspace dependencies
-        run: pnpm install --frozen-lockfile
-
       - name: Check the version being released
-        # Both packages publish together from this one job, and the server package's `workspace:*`
-        # dependency on the native one resolves to whatever version the native package carries at
-        # pack time, so a release where the two disagree publishes a server pinned to a version that
-        # may never have been published. A tag additionally has to name that same version, so every
-        # release on npm is traceable to the ref it was cut from.
+        # Both packages publish together from this one release, and the server package's
+        # `workspace:*` dependency on the native one resolves to whatever version the native package
+        # carries at pack time, so a release where the two disagree publishes a server pinned to a
+        # version that may never have been published. A tag additionally has to name that same
+        # version, so every release on npm is traceable to the ref it was cut from.
         run: |
           set -euo pipefail
           engine="$(node -p "require('./packages/engine/package.json').version")"
@@ -67,34 +43,131 @@ jobs:
           fi
           echo "releasing $engine"
 
-      - name: Build every declared native target
+  build:
+    name: Build native target (${{ matrix.target }})
+    needs: preflight
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-24.04-arm
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache Cargo artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: release-${{ matrix.target }}
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Install Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build native addon
         working-directory: packages/engine
-        run: |
-          set -euo pipefail
-          for target in x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu; do
-            pnpm exec napi build --platform --release --target "$target" --cross-compile
-          done
+        # Every leg builds natively on the architecture it targets — no cross-compile toolchain
+        # needed, and every C dependency (rusqlite's bundled SQLite, git2's vendored libgit2) sees
+        # the real platform toolchain it was written against.
+        run: pnpm exec napi build --platform --release --target ${{ matrix.target }}
 
       - name: Verify the native binding actually loads
+        # Runs on the same architecture the binding was just built for, so a binary that builds but
+        # can't actually load on its target fails here rather than surfacing as someone else's
+        # install error.
         working-directory: packages/server
         run: pnpm smoke:native
 
+      - name: Upload the built binary
+        uses: actions/upload-artifact@v7
+        with:
+          name: native-binary-${{ matrix.target }}
+          path: packages/engine/*.node
+          if-no-files-found: error
+
+  scaffold-and-pack:
+    name: Scaffold per-platform packages and pack every tarball
+    needs: [preflight, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Install Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Download every target's built binary
+        uses: actions/download-artifact@v8
+        with:
+          pattern: native-binary-*
+          path: native-artifacts
+
+      - name: Scaffold per-platform npm packages
+        working-directory: packages/engine
+        run: pnpm exec napi create-npm-dirs
+
+      - name: Move each target's binary into its npm/<platform>/ dir
+        working-directory: packages/engine
+        run: pnpm exec napi artifacts --output-dir ../../native-artifacts
+
+      - name: Wire optionalDependencies into package.json
+        # --skip-optional-publish: the publish job downloads these packages and publishes them
+        # itself — this step only wires optionalDependencies, it never publishes.
+        # --no-gh-release: binaries reach users as npm optionalDependencies, not GitHub release
+        # assets, so no release needs creating here.
+        working-directory: packages/engine
+        run: pnpm exec napi prepublish -t npm --skip-optional-publish --no-gh-release
+
       - name: Build the MCP server bundle
         working-directory: packages/server
+        # packages/engine's optionalDependencies now name platform packages that don't carry this
+        # release's version on the registry yet, so pnpm can't resolve them; CI=false lets pnpm
+        # install leniently around that instead of refusing to run at all.
         run: pnpm build
+        env:
+          CI: "false"
 
-      - name: Pack both packages into publishable tarballs
-        # The native package carries every target's binary directly: the build loop above writes
-        # each `.node` into `packages/engine/`, and that package's `files` glob picks them all up,
-        # so the generated loader in `index.js` finds the host platform's binary inside the package
-        # it was installed from. `pnpm pack` (not `npm pack`) is load-bearing — it resolves the
-        # server package's `workspace:*` dependency on the native package to a real version, which
-        # plain `npm` has no notion of.
+      - name: Pack every package into publishable tarballs
+        # `pnpm pack` (not `npm pack`) for the two workspace packages is load-bearing: it resolves
+        # the server package's `workspace:*` dependency on the native package to a real version,
+        # which plain `npm` has no notion of. The platform packages carry no internal dependencies,
+        # so plain `npm pack` is enough for them.
         run: |
           set -euo pipefail
-          mkdir -p dist-packages/native dist-packages/server
+          mkdir -p dist-packages/platforms dist-packages/native dist-packages/server
+          for dir in packages/engine/npm/*/; do
+            (cd "$dir" && npm pack --pack-destination "$GITHUB_WORKSPACE/dist-packages/platforms")
+          done
           pnpm --filter @vymalo/lightbridge-code-intelligence-native pack --pack-destination dist-packages/native
           pnpm --filter @vymalo/lightbridge-code-intelligence-mcp pack --pack-destination dist-packages/server
+        env:
+          CI: "false"
 
       - name: Upload packed tarballs
         uses: actions/upload-artifact@v7
@@ -105,12 +178,15 @@ jobs:
 
   publish:
     name: Publish to npm (OIDC trusted publishing)
-    needs: build
+    needs: scaffold-and-pack
     runs-on: ubuntu-latest
     permissions:
       id-token: write   # required for npm's OIDC token exchange
       contents: read
     steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
       - name: Install Node.js
         uses: actions/setup-node@v7
         with:
@@ -126,8 +202,77 @@ jobs:
           name: npm-packages
           path: dist-packages
 
+      - name: Publish every platform package
+        # Attempts every platform tarball and only fails at the end, rather than aborting on the
+        # first one — so one platform's publish issue never blocks the packages beside it, and the
+        # native and server packages below still publish regardless.
+        run: |
+          set -uo pipefail
+          publish_flags=(--access public)
+          [ "${{ inputs.rehearsal }}" = "true" ] && publish_flags+=(--dry-run)
+          failed=()
+          for tarball in dist-packages/platforms/*.tgz; do
+            name="$(tar xzfO "$tarball" package/package.json | node -p 'JSON.parse(require("fs").readFileSync(0)).name')"
+            echo "::group::npm publish $name"
+            if ! .github/scripts/npm-publish.sh "$tarball" "${publish_flags[@]}"; then
+              failed+=("$name")
+            fi
+            echo "::endgroup::"
+          done
+          if [ "${#failed[@]}" -gt 0 ]; then
+            echo "::error::platform package publish failed for: ${failed[*]}"
+            echo "PLATFORM_PUBLISH_FAILED=${failed[*]}" >> "$GITHUB_ENV"
+          fi
+
       - name: Publish the native package
-        run: npm publish dist-packages/native/*.tgz --access public
+        run: |
+          publish_flags=(--access public)
+          [ "${{ inputs.rehearsal }}" = "true" ] && publish_flags+=(--dry-run)
+          .github/scripts/npm-publish.sh dist-packages/native/*.tgz "${publish_flags[@]}"
 
       - name: Publish the MCP server package
-        run: npm publish dist-packages/server/*.tgz --access public
+        run: |
+          publish_flags=(--access public)
+          [ "${{ inputs.rehearsal }}" = "true" ] && publish_flags+=(--dry-run)
+          .github/scripts/npm-publish.sh dist-packages/server/*.tgz "${publish_flags[@]}"
+
+      - name: Verify every published package is visible on the registry
+        # `npm publish` exiting 0 means the registry accepted the tarball, not that it's installable
+        # yet — polls the registry directly rather than trusting the exit code alone. Skipped on a
+        # rehearsal run: nothing was actually published, so nothing can become visible.
+        if: inputs.rehearsal != true
+        run: |
+          set -uo pipefail
+          names=()
+          for tarball in dist-packages/platforms/*.tgz dist-packages/native/*.tgz dist-packages/server/*.tgz; do
+            names+=("$(tar xzfO "$tarball" package/package.json | node -p 'JSON.parse(require("fs").readFileSync(0)).name')")
+          done
+          version="$(tar xzfO dist-packages/native/*.tgz package/package.json | node -p 'JSON.parse(require("fs").readFileSync(0)).version')"
+          deadline=$((SECONDS + 360))
+          missing=("${names[@]}")
+          while [ "${#missing[@]}" -gt 0 ] && [ "$SECONDS" -lt "$deadline" ]; do
+            still=()
+            for name in "${missing[@]}"; do
+              code=$(curl -s -o /dev/null -w '%{http_code}' "https://registry.npmjs.org/${name}/${version}" || echo 000)
+              if [ "$code" = "200" ]; then echo "✓ ${name}@${version} visible"; else still+=("$name"); fi
+            done
+            missing=("${still[@]+"${still[@]}"}")
+            [ "${#missing[@]}" -gt 0 ] && sleep 30
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::not visible on registry.npmjs.org after 6 minutes at ${version}: ${missing[*]}"
+            echo "PACKAGES_NOT_VISIBLE=${missing[*]}" >> "$GITHUB_ENV"
+          fi
+
+      - name: Fail the job if any platform package did not publish or become visible
+        if: always()
+        run: |
+          if [ -n "${PLATFORM_PUBLISH_FAILED:-}" ]; then
+            echo "::error::these platform packages did not publish: $PLATFORM_PUBLISH_FAILED"
+            exit 1
+          fi
+          if [ -n "${PACKAGES_NOT_VISIBLE:-}" ]; then
+            echo "::error::these packages were accepted but are not visible on the registry: $PACKAGES_NOT_VISIBLE"
+            exit 1
+          fi
+          echo "all packages published and visible on the registry"
