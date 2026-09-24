@@ -11,8 +11,8 @@ export interface AuthorizationAuditEvent {
 export type AuthorizationAuditSink = (event: AuthorizationAuditEvent) => void;
 
 /** Empty allowlists mean trusted local mode; configured allowlists fail closed. */
-export function createRepositoryAuthorizer(principal: string | undefined, audit?: AuthorizationAuditSink) {
-  return (repository: RepositoryCatalogRecord, operation: WorkerOperation): boolean => {
+export function createRepositoryAuthorizer(audit?: AuthorizationAuditSink) {
+  return (repository: RepositoryCatalogRecord, operation: WorkerOperation, principal?: string): boolean => {
     const allowed =
       repository.allowedPrincipals.length === 0 ||
       (principal !== undefined && repository.allowedPrincipals.includes(principal));
@@ -20,3 +20,5 @@ export function createRepositoryAuthorizer(principal: string | undefined, audit?
     return allowed;
   };
 }
+
+export type RepositoryAuthorizer = ReturnType<typeof createRepositoryAuthorizer>;

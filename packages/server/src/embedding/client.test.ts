@@ -194,7 +194,14 @@ describe("EmbeddingClient", () => {
   it("splits a batch into multiple requests to stay within maxInputTokens, preserving order", async () => {
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce(jsonResponse(200, { data: [{ index: 0, embedding: [1] }, { index: 1, embedding: [2] }] }))
+      .mockResolvedValueOnce(
+        jsonResponse(200, {
+          data: [
+            { index: 0, embedding: [1] },
+            { index: 1, embedding: [2] },
+          ],
+        }),
+      )
       .mockResolvedValueOnce(jsonResponse(200, { data: [{ index: 0, embedding: [3] }] }));
     vi.stubGlobal("fetch", fetchMock);
     const client = new EmbeddingClient({

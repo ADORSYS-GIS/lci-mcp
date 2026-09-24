@@ -30,7 +30,10 @@ export function registerReadSourceTool(server: McpServer, ctx: AppContext): void
       const { worker, explicit } = await resolveToolWorker(ctx, repository_id);
       const resolved = await resolveWithinRoot(worker.repositoryRoot, requestedPath);
       if (!resolved) {
-        return { content: [{ type: "text", text: "lci_read_source: path is outside the repository or does not exist." }], isError: true };
+        return {
+          content: [{ type: "text", text: "lci_read_source: path is outside the repository or does not exist." }],
+          isError: true,
+        };
       }
       const snippet = await readLineRange(resolved, start_line, end_line ?? start_line + MAX_LINES - 1);
       if (!snippet) {

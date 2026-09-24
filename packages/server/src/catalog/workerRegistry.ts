@@ -27,6 +27,7 @@ export type RepositoryWorkerFactory = (
 export type RepositoryAuthorization = (
   repository: RepositoryCatalogRecord,
   operation: WorkerOperation,
+  principal?: string,
 ) => boolean | Promise<boolean>;
 
 export interface RepositoryWorkerRegistryOptions {
@@ -41,6 +42,10 @@ export interface RepositoryWorkerRegistryOptions {
 export class RepositoryWorkerRegistry {
   private readonly workers = new Map<string, RepositoryWorker>();
   private readonly opening = new Map<string, Promise<RepositoryWorker>>();
+  // Monotonic use counter per open worker; the smallest value is the least-recently-used worker.
+  private readonly lastUsed = new Map<string, number>();
+  private useTick = 0;
+  private closing = false;
   private readonly storageRoot: string;
   private readonly maxWorkers: number;
 
@@ -57,6 +62,10 @@ export class RepositoryWorkerRegistry {
     return this.workers.size;
   }
 
+  get capacity(): number {
+    return this.maxWorkers;
+  }
+
   databasePathFor(repositoryId: string): string {
     const databasePath = path.resolve(this.storageRoot, repositoryId, "index.sqlite");
     const storagePrefix = `${this.storageRoot}${path.sep}`;
@@ -66,35 +75,91 @@ export class RepositoryWorkerRegistry {
     return databasePath;
   }
 
-  async resolve(repositoryId: string, operation: WorkerOperation = "query"): Promise<RepositoryWorker> {
+  async resolve(
+    repositoryId: string,
+    operation: WorkerOperation = "query",
+    principal?: string,
+  ): Promise<RepositoryWorker> {
+    if (this.closing) throw new Error("repository worker registry is shutting down");
     const repository = await this.options.catalog.get(repositoryId);
     if (!repository) throw new Error(`repository not found: ${repositoryId}`);
     this.assertAvailable(repository, operation);
-    if (this.options.authorize && !(await this.options.authorize(repository, operation))) {
+    if (this.options.authorize && !(await this.options.authorize(repository, operation, principal))) {
       throw new Error(`repository access denied: ${repositoryId}`);
     }
 
     const cached = this.workers.get(repositoryId);
-    if (cached) return cached;
+    if (cached) {
+      // Refresh the snapshot so envelopes report live lifecycle/state, not the record captured at open.
+      cached.repository = repository;
+      this.touch(repositoryId);
+      return cached;
+    }
 
     const pending = this.opening.get(repositoryId);
     if (pending !== undefined) return pending;
-    if (this.workers.size + this.opening.size >= this.maxWorkers) throw new Error("repository worker capacity reached");
+
+    // Evict to make room BEFORE registering the open, so the `opening` lookup and its set below are
+    // not separated by an await — that keeps concurrent resolves of the same repository deduplicated.
+    await this.evictToCapacity();
+    const cachedAfterEvict = this.workers.get(repositoryId);
+    if (cachedAfterEvict) {
+      cachedAfterEvict.repository = repository;
+      this.touch(repositoryId);
+      return cachedAfterEvict;
+    }
+    const pendingAfterEvict = this.opening.get(repositoryId);
+    if (pendingAfterEvict !== undefined) return pendingAfterEvict;
+    if (this.workers.size + this.opening.size >= this.maxWorkers) {
+      throw new Error("repository worker capacity reached");
+    }
 
     const opening = this.openWorker(repository);
     this.opening.set(repositoryId, opening);
     try {
-      return await opening;
+      const worker = await opening;
+      this.touch(repositoryId);
+      return worker;
     } finally {
       this.opening.delete(repositoryId);
     }
   }
 
   async closeAll(): Promise<void> {
-    await Promise.all([...this.opening.values()].map(async (opening) => opening.catch(() => undefined)));
+    // Reject new opens and drain any that were already in flight, including opens that settle while
+    // we await, so a worker created during teardown is still closed rather than leaked.
+    this.closing = true;
+    while (this.opening.size > 0) {
+      await Promise.all([...this.opening.values()].map(async (opening) => opening.catch(() => undefined)));
+    }
     const workers = [...this.workers.values()];
     this.workers.clear();
+    this.lastUsed.clear();
     await Promise.all(workers.map(async (worker) => worker.close?.()));
+  }
+
+  private touch(repositoryId: string): void {
+    this.lastUsed.set(repositoryId, ++this.useTick);
+  }
+
+  /** Closes the least-recently-used cached workers until there is room for one more. */
+  private async evictToCapacity(): Promise<void> {
+    while (this.workers.size + this.opening.size >= this.maxWorkers && this.workers.size > 0) {
+      let lruId: string | undefined;
+      let lruTick = Number.POSITIVE_INFINITY;
+      for (const repositoryId of this.workers.keys()) {
+        const tick = this.lastUsed.get(repositoryId) ?? 0;
+        if (tick < lruTick) {
+          lruTick = tick;
+          lruId = repositoryId;
+        }
+      }
+      if (lruId === undefined) return;
+      const victim = this.workers.get(lruId)!;
+      this.workers.delete(lruId);
+      this.lastUsed.delete(lruId);
+      await victim.close?.();
+    }
   }
 
   private async openWorker(repository: RepositoryCatalogRecord): Promise<RepositoryWorker> {

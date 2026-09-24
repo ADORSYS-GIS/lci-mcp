@@ -42,7 +42,7 @@ describe("repository-keyed indexing jobs", () => {
     const first = deferred();
     startBackgroundIndexJob(logger, "repo-a", () => first.promise);
     expect(() => startBackgroundIndexJob(logger, "repo-a", async () => undefined)).toThrow(
-      "indexing is already in progress for repository: repo-a",
+      "repository indexing already in progress: repo-a",
     );
     first.resolve();
     await waitForBackgroundIndexJob();

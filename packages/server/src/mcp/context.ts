@@ -1,10 +1,14 @@
+import { createHash } from "node:crypto";
+
 import type { SafeRepositorySummary } from "../catalog/schema.js";
 import { repositoryKind } from "../catalog/schema.js";
+import type { RepositoryCatalogStore } from "../catalog/store.js";
 import type { RepositoryWorker, RepositoryWorkerRegistry, WorkerOperation } from "../catalog/workerRegistry.js";
 import type { LciConfig } from "../config/schema.js";
 import type { EmbeddingClient } from "../embedding/client.js";
 import type { CodeIndex } from "../engine.js";
 import type { Logger } from "../logging.js";
+import { sanitizeToolError } from "./toolResult.js";
 
 export type ToolWorker = Pick<
   RepositoryWorker,
@@ -21,12 +25,36 @@ export interface AppContext {
   repoRoot: string;
   databasePath: string;
   workerRegistry?: RepositoryWorkerRegistry;
+  /** Persistent catalog, used to advance repository lifecycle/queryability as indexing progresses. */
+  catalog?: RepositoryCatalogStore;
   defaultRepositoryId?: string;
   allowImplicitRepository?: boolean;
-  listRepositories?: () => Promise<SafeRepositorySummary[]>;
+  /** Identity of the calling client; per session over HTTP, or LCI_PRINCIPAL over stdio. */
+  principal?: string;
+  listRepositories?: (principal?: string) => Promise<SafeRepositorySummary[]>;
 }
 
 export async function resolveToolWorker(
+  ctx: AppContext,
+  repositoryId: string | undefined,
+  operation: WorkerOperation = "query",
+): Promise<{ worker: ToolWorker; explicit: boolean }> {
+  // Shared error chokepoint: catalog reads and CodeIndex.open (reached via the registry) throw
+  // messages embedding absolute filesystem paths. Sanitize once here so no repository-scoped tool
+  // can leak those back through the MCP response; the raw detail stays in the server debug log.
+  try {
+    return await resolveToolWorkerRaw(ctx, repositoryId, operation);
+  } catch (error) {
+    ctx.logger.debug("resolveToolWorker failed", {
+      repositoryId,
+      operation,
+      reason: error instanceof Error ? error.message : String(error),
+    });
+    throw new Error(sanitizeToolError(error));
+  }
+}
+
+async function resolveToolWorkerRaw(
   ctx: AppContext,
   repositoryId: string | undefined,
   operation: WorkerOperation = "query",
@@ -37,10 +65,13 @@ export async function resolveToolWorker(
     if (repositoryId === undefined && ctx.allowImplicitRepository !== true) {
       throw new Error("repository_id is required for this MCP server");
     }
-    return { worker: await ctx.workerRegistry.resolve(selectedId, operation), explicit: repositoryId !== undefined };
+    return {
+      worker: await ctx.workerRegistry.resolve(selectedId, operation, ctx.principal),
+      explicit: repositoryId !== undefined,
+    };
   }
 
-  if (repositoryId !== undefined && repositoryId !== ctx.defaultRepositoryId) {
+  if (repositoryId !== undefined && repositoryId !== ctx.defaultRepositoryId && repositoryId !== "default") {
     throw new Error(`repository is not configured: ${repositoryId}`);
   }
   if (ctx.allowImplicitRepository === false && repositoryId === undefined) {
@@ -59,7 +90,6 @@ export async function resolveToolWorker(
         enabled: true,
         queryable: true,
         allowedPrincipals: [],
-        embeddingProfile: "default",
         structuralOnly: ctx.embeddingClient === undefined,
         autoIndex: false,
         lifecycle: "ready",
@@ -76,10 +106,14 @@ export async function resolveToolWorker(
 // Identifies the embedding model/config a worker would build with now; `undefined` when the
 // worker has no embedding client (structural-only). Shared by lci_index and lci_index_status so
 // the "expected" fingerprint used to (re)build and the one used to detect staleness never drift.
+// baseUrl is included so repointing to a different provider (same model/dimensions) is caught;
+// the tuple is hashed so a URL's own delimiters can't collide with another configuration.
 export function embeddingFingerprintFor(ctx: AppContext, worker: ToolWorker): string | undefined {
-  return worker.embeddingClient
-    ? `${ctx.config.embedding.model}:${ctx.config.embedding.dimensions ?? "default"}`
-    : undefined;
+  if (!worker.embeddingClient) return undefined;
+  const { baseUrl, model, dimensions } = ctx.config.embedding;
+  return createHash("sha256")
+    .update(JSON.stringify({ baseUrl: baseUrl ?? null, model, dimensions: dimensions ?? null }))
+    .digest("hex");
 }
 
 export function repositoryEnvelope<T>(

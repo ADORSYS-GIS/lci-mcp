@@ -14,7 +14,6 @@ const repository = {
   enabled: true,
   queryable: false,
   allowedPrincipals: [],
-  embeddingProfile: "default",
   structuralOnly: false,
   autoIndex: false,
   lifecycle: "registered" as const,
@@ -64,5 +63,41 @@ describe("RepositoryCatalogStore", () => {
     await store.add(repository);
     const contents = await readFile(filePath, "utf8");
     expect(JSON.parse(contents).schemaVersion).toBe(1);
+  });
+
+  it("reconciles the manifest: adds new repos non-queryable and preserves index state", async () => {
+    const { store } = await makeStore();
+    await store.reconcileManifest([repository]);
+    expect((await store.get("repo-a"))?.queryable).toBe(false);
+
+    await store.transition("repo-a", "indexing");
+    await store.transition("repo-a", "ready", { queryable: true, lastIndexedAt: "2026-09-23T00:00:00.000Z" });
+    await store.reconcileManifest([{ ...repository, displayName: "Renamed", allowedPrincipals: ["team-a"] }]);
+    const updated = await store.get("repo-a");
+    expect(updated?.displayName).toBe("Renamed");
+    expect(updated?.allowedPrincipals).toEqual(["team-a"]);
+    expect(updated?.lifecycle).toBe("ready");
+    expect(updated?.queryable).toBe(true);
+    expect(updated?.lastIndexedAt).toBe("2026-09-23T00:00:00.000Z");
+  });
+
+  it("marks repositories dropped from the manifest as removed and non-queryable", async () => {
+    const { store } = await makeStore();
+    await store.add({ ...repository, lifecycle: "ready", queryable: true });
+    await store.reconcileManifest([]);
+    const removed = await store.get("repo-a");
+    expect(removed?.lifecycle).toBe("removed");
+    expect(removed?.queryable).toBe(false);
+    expect(removed?.enabled).toBe(false);
+  });
+
+  it("serializes concurrent mutations without losing updates", async () => {
+    const { store } = await makeStore();
+    await store.add(repository);
+    await store.add({ ...repository, repositoryId: "repo-b", checkoutPath: "/var/lib/lci/checkouts/repo-b" });
+    // Fire both transitions at once; serialization must apply both rather than clobbering one.
+    await Promise.all([store.transition("repo-a", "indexing"), store.transition("repo-b", "indexing")]);
+    expect((await store.get("repo-a"))?.lifecycle).toBe("indexing");
+    expect((await store.get("repo-b"))?.lifecycle).toBe("indexing");
   });
 });

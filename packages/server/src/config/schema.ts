@@ -2,6 +2,8 @@ import path from "node:path";
 
 import { z } from "zod";
 
+import { isValidRemoteUrl, REMOTE_URL_MESSAGE } from "../catalog/remoteUrl.js";
+
 export const AuthHelperSchema = z.object({
   command: z.string(),
   args: z.array(z.string()).default([]),
@@ -34,13 +36,7 @@ export const RepositoryManifestEntrySchema = z
       .regex(/^[a-z0-9](?:[a-z0-9._-]{0,62})$/, "repositoryId must be a stable opaque identifier")
       .refine((value) => !value.includes(".."), "repositoryId must not contain path traversal"),
     displayName: z.string().trim().min(1).max(200),
-    remoteUrl: z
-      .string()
-      .url()
-      .refine((value) => {
-        const parsed = new URL(value);
-        return ["http:", "https:", "ssh:"].includes(parsed.protocol) && !parsed.username && !parsed.password;
-      }, "remoteUrl must use http, https, or ssh without embedded credentials"),
+    remoteUrl: z.string().min(1).refine(isValidRemoteUrl, REMOTE_URL_MESSAGE),
     checkoutPath: z
       .string()
       .min(1)
@@ -48,10 +44,8 @@ export const RepositoryManifestEntrySchema = z
       .refine((value) => !value.includes("\0"), "checkoutPath must not contain a null byte"),
     enabled: z.boolean().default(true),
     allowedPrincipals: z.array(z.string().trim().min(1)).default([]),
-    embeddingProfile: z.string().trim().min(1).default("default"),
     structuralOnly: z.boolean().default(false),
     autoIndex: z.boolean().default(false),
-    refreshIntervalMinutes: z.number().int().positive().optional(),
   })
   .strict();
 export type RepositoryManifestEntry = z.infer<typeof RepositoryManifestEntrySchema>;
@@ -77,7 +71,8 @@ export const DocumentSourceSchema = z
   })
   .strict()
   .refine(
-    (source) => (source.path ? 1 : 0) + (source.url ? 1 : 0) + (source.paths?.length ?? 0) + (source.urls?.length ?? 0) >= 1,
+    (source) =>
+      (source.path ? 1 : 0) + (source.url ? 1 : 0) + (source.paths?.length ?? 0) + (source.urls?.length ?? 0) >= 1,
     "each document source must set at least one of path, url, paths, or urls",
   );
 export type DocumentSource = z.infer<typeof DocumentSourceSchema>;
@@ -99,6 +94,22 @@ export const IndexConfigSchema = z.object({
   maxConcurrentRepositories: z.number().int().positive().default(2),
 });
 
+// Optional: enables cloning/refreshing manifest repositories from their remotes at boot. Absent by
+// default, so a manifest that ships its own checkouts keeps working with no side effects.
+export const ProvisioningConfigSchema = z
+  .object({
+    checkoutRoot: z
+      .string()
+      .refine(
+        (value) => path.isAbsolute(value) || value.startsWith("{{"),
+        "checkoutRoot must be absolute or use a template",
+      ),
+    allowedHosts: z.array(z.string().trim().min(1)).min(1),
+    gitPath: z.string().trim().min(1).optional(),
+  })
+  .strict();
+export type ProvisioningConfig = z.infer<typeof ProvisioningConfigSchema>;
+
 export const LoggingConfigSchema = z.object({
   level: z.enum(["error", "warn", "info", "debug", "trace"]).default("info"),
 });
@@ -112,6 +123,7 @@ export const LciConfigSchema = z
     storage: StorageConfigSchema,
     index: IndexConfigSchema,
     logging: LoggingConfigSchema,
+    provisioning: ProvisioningConfigSchema.optional(),
     repositories: z.array(RepositoryManifestEntrySchema).default([]),
     documentSources: z.array(DocumentSourceSchema).default([]),
   })
@@ -135,7 +147,6 @@ export function toSafeRepositoryConfig(entry: RepositoryManifestEntry) {
     repositoryId: entry.repositoryId,
     displayName: entry.displayName,
     enabled: entry.enabled,
-    embeddingProfile: entry.embeddingProfile,
     structuralOnly: entry.structuralOnly,
     autoIndex: entry.autoIndex,
   };

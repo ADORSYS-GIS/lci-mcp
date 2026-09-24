@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, writeFile, readdir, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -62,8 +62,15 @@ describe("document source staging", () => {
     const fetchMock = async () =>
       new Response("# Remote\n", { status: 200, headers: { "content-type": "text/markdown" } });
 
-    const source = DocumentSourceSchema.parse({ id: "remote", displayName: "Remote", url: "https://example.test/handbook" });
-    const entries = await stageDocumentSources([source], staging, { logger: silentLogger(), fetch: fetchMock as typeof fetch });
+    const source = DocumentSourceSchema.parse({
+      id: "remote",
+      displayName: "Remote",
+      url: "https://example.test/handbook",
+    });
+    const entries = await stageDocumentSources([source], staging, {
+      logger: silentLogger(),
+      fetch: fetchMock as typeof fetch,
+    });
 
     expect(entries).toHaveLength(1);
     expect(await readdir(entries[0]!.entry.checkoutPath)).toEqual(["handbook.md"]);
@@ -93,7 +100,10 @@ describe("document source staging", () => {
       displayName: "Spec",
       urls: ["https://example.test/a.pdf", "https://example.test/b.pdf"],
     });
-    const entries = await stageDocumentSources([source], staging, { logger: silentLogger(), fetch: fetchMock as typeof fetch });
+    const entries = await stageDocumentSources([source], staging, {
+      logger: silentLogger(),
+      fetch: fetchMock as typeof fetch,
+    });
 
     expect(entries).toHaveLength(1);
     expect((await readdir(entries[0]!.entry.checkoutPath)).sort()).toEqual(["a.pdf", "b.pdf"]);
@@ -121,7 +131,11 @@ describe("document source staging", () => {
       fetches += 1;
       return new Response("pdf", { status: 200, headers: { "content-type": "application/pdf" } });
     };
-    const source = DocumentSourceSchema.parse({ id: "spec", displayName: "Spec", urls: ["https://example.test/doc.pdf"] });
+    const source = DocumentSourceSchema.parse({
+      id: "spec",
+      displayName: "Spec",
+      urls: ["https://example.test/doc.pdf"],
+    });
 
     await stageDocumentSources([source], staging, { logger: silentLogger(), fetch: fetchMock as typeof fetch });
     await stageDocumentSources([source], staging, { logger: silentLogger(), fetch: fetchMock as typeof fetch });
@@ -131,6 +145,8 @@ describe("document source staging", () => {
 
   it("requires at least one input and accepts combined inputs", () => {
     expect(() => DocumentSourceSchema.parse({ id: "x", displayName: "X" })).toThrow();
-    expect(() => DocumentSourceSchema.parse({ id: "x", displayName: "X", path: "/a", urls: ["https://e.test/a.pdf"] })).not.toThrow();
+    expect(() =>
+      DocumentSourceSchema.parse({ id: "x", displayName: "X", path: "/a", urls: ["https://e.test/a.pdf"] }),
+    ).not.toThrow();
   });
 });

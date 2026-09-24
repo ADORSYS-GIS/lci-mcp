@@ -1,5 +1,5 @@
-import path from "node:path";
 import os from "node:os";
+import path from "node:path";
 
 import { CodeIndex } from "@vymalo/lightbridge-code-intelligence-native";
 
@@ -23,7 +23,14 @@ const database =
 const index = await CodeIndex.open({ repository, database });
 
 const withEmbeddings = await index.status(fingerprint);
-console.log(`expected=${fingerprint} -> state:`, withEmbeddings.state, "usable:", withEmbeddings.usable, "staleReasons:", withEmbeddings.staleReasons);
+console.log(
+  `expected=${fingerprint} -> state:`,
+  withEmbeddings.state,
+  "usable:",
+  withEmbeddings.usable,
+  "staleReasons:",
+  withEmbeddings.staleReasons,
+);
 
 const structuralOnly = await index.status();
 console.log("expected=none -> staleReasons:", structuralOnly.staleReasons);

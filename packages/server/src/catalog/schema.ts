@@ -3,6 +3,7 @@ import path from "node:path";
 import { z } from "zod";
 
 import { DOCUMENT_SOURCE_REMOTE_HOST } from "../documentSources.js";
+import { isValidRemoteUrl, REMOTE_URL_MESSAGE } from "./remoteUrl.js";
 
 export const CATALOG_SCHEMA_VERSION = 1;
 
@@ -23,13 +24,7 @@ const RepositoryIdSchema = z
   .regex(/^[a-z0-9](?:[a-z0-9._-]{0,62})$/, "repositoryId must be a stable opaque identifier")
   .refine((value) => !value.includes(".."), "repositoryId must not contain path traversal");
 
-const RemoteUrlSchema = z
-  .string()
-  .url()
-  .refine((value) => {
-    const parsed = new URL(value);
-    return ["http:", "https:", "ssh:"].includes(parsed.protocol) && !parsed.username && !parsed.password;
-  }, "remoteUrl must use http, https, or ssh without embedded credentials");
+const RemoteUrlSchema = z.string().min(1).refine(isValidRemoteUrl, REMOTE_URL_MESSAGE);
 
 const AbsoluteCheckoutPathSchema = z
   .string()
@@ -47,10 +42,8 @@ export const RepositoryCatalogRecordSchema = z.object({
   enabled: z.boolean().default(true),
   queryable: z.boolean().default(false),
   allowedPrincipals: z.array(z.string().trim().min(1)).default([]),
-  embeddingProfile: z.string().trim().min(1).default("default"),
   structuralOnly: z.boolean().default(false),
   autoIndex: z.boolean().default(false),
-  refreshIntervalMinutes: z.number().int().positive().optional(),
   lifecycle: RepositoryLifecycleSchema.default("registered"),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
@@ -137,7 +130,9 @@ export function migrateCatalogDocument(value: unknown): CatalogDocument {
 }
 
 const lifecycleTransitions: Record<RepositoryLifecycle, readonly RepositoryLifecycle[]> = {
-  registered: ["provisioning", "disabled", "removed"],
+  // A manifest that ships its own checkouts indexes straight from `registered`; provisioning is only
+  // an intermediate step for deployments that clone from a remote.
+  registered: ["provisioning", "indexing", "disabled", "removed"],
   provisioning: ["registered", "indexing", "failed", "disabled", "removed"],
   indexing: ["ready", "stale", "failed", "disabled", "removed"],
   ready: ["indexing", "stale", "disabled", "removed"],

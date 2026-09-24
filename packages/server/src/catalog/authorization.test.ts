@@ -11,7 +11,6 @@ const repository: RepositoryCatalogRecord = {
   enabled: true,
   queryable: true,
   allowedPrincipals: ["team-a"],
-  embeddingProfile: "default",
   structuralOnly: false,
   autoIndex: false,
   lifecycle: "ready",
@@ -21,19 +20,19 @@ const repository: RepositoryCatalogRecord = {
 
 describe("repository authorization", () => {
   it("fails closed for a configured allowlist", () => {
-    expect(createRepositoryAuthorizer(undefined)(repository, "query")).toBe(false);
-    expect(createRepositoryAuthorizer("other-team")(repository, "query")).toBe(false);
-    expect(createRepositoryAuthorizer("team-a")(repository, "query")).toBe(true);
+    expect(createRepositoryAuthorizer()(repository, "query", undefined)).toBe(false);
+    expect(createRepositoryAuthorizer()(repository, "query", "other-team")).toBe(false);
+    expect(createRepositoryAuthorizer()(repository, "query", "team-a")).toBe(true);
   });
 
   it("allows trusted local mode when no allowlist is configured", () => {
-    expect(createRepositoryAuthorizer(undefined)({ ...repository, allowedPrincipals: [] }, "query")).toBe(true);
+    expect(createRepositoryAuthorizer()({ ...repository, allowedPrincipals: [] }, "query", undefined)).toBe(true);
   });
 
   it("emits an audit event without source content", () => {
     const events: Array<{ repositoryId: string; operation: string; allowed: boolean }> = [];
-    const authorizer = createRepositoryAuthorizer("team-a", (event) => events.push(event));
-    authorizer(repository, "index");
+    const authorizer = createRepositoryAuthorizer((event) => events.push(event));
+    authorizer(repository, "index", "team-a");
     expect(events).toEqual([{ repositoryId: "repo-a", operation: "index", principal: "team-a", allowed: true }]);
   });
 });

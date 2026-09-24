@@ -16,7 +16,6 @@ const repository = {
   enabled: true,
   queryable: true,
   allowedPrincipals: [],
-  embeddingProfile: "default",
   structuralOnly: false,
   autoIndex: false,
   lifecycle: "ready" as const,
@@ -122,7 +121,7 @@ describe("RepositoryWorkerRegistry", () => {
     expect(opens).toBe(0);
   });
 
-  it("enforces the worker capacity and closes cached workers", async () => {
+  it("evicts the least-recently-used worker to stay within capacity", async () => {
     const { catalog, storageRoot } = await makeCatalog();
     await catalog.add({
       ...repository,
@@ -139,9 +138,23 @@ describe("RepositoryWorkerRegistry", () => {
     });
 
     await registry.resolve("repo-a");
-    await expect(registry.resolve("repo-b")).rejects.toThrow("worker capacity reached");
-    await registry.closeAll();
+    await registry.resolve("repo-b");
     expect(closed).toEqual(["repo-a"]);
+    expect(registry.size).toBe(1);
+    await registry.closeAll();
+    expect(closed).toEqual(["repo-a", "repo-b"]);
     expect(registry.size).toBe(0);
+  });
+
+  it("rejects new resolves once shutting down", async () => {
+    const { catalog, storageRoot } = await makeCatalog();
+    const registry = new RepositoryWorkerRegistry({
+      catalog,
+      storageRoot,
+      factory: async () => fakeResources(),
+    });
+    await registry.resolve("repo-a");
+    await registry.closeAll();
+    await expect(registry.resolve("repo-a")).rejects.toThrow("shutting down");
   });
 });

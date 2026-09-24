@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { access, mkdir, realpath } from "node:fs/promises";
 import path from "node:path";
 
+import { isValidRemoteUrl, REMOTE_URL_MESSAGE, remoteUrlHost } from "./remoteUrl.js";
 import type { RepositoryCatalogRecord } from "./schema.js";
 import type { RepositoryCatalogStore } from "./store.js";
 
@@ -10,7 +11,6 @@ export interface RepositoryRegistration {
   displayName: string;
   remoteUrl: string;
   allowedPrincipals?: string[];
-  embeddingProfile?: string;
   structuralOnly?: boolean;
   autoIndex?: boolean;
 }
@@ -25,16 +25,28 @@ export interface GitCheckoutAdapter {
 }
 
 export class GitCliCheckoutAdapter implements GitCheckoutAdapter {
+  // Resolve `git` from PATH by default (respects nvm/Homebrew/Windows installs); allow an explicit
+  // absolute override for locked-down environments via the LCI_GIT_PATH env var or the constructor.
+  private readonly gitCommand: string;
+
+  constructor(gitCommand?: string) {
+    this.gitCommand = gitCommand ?? process.env.LCI_GIT_PATH ?? "git";
+  }
+
   async ensureCheckout(remoteUrl: string, checkoutPath: string): Promise<void> {
     try {
       await access(path.join(checkoutPath, ".git"));
-      await runGit(["-C", checkoutPath, "fetch", "--prune", "origin"]);
-      await runGit(["-C", checkoutPath, "reset", "--hard", "origin/HEAD"]);
+      await this.runGit(["-C", checkoutPath, "fetch", "--prune", "origin"]);
+      await this.runGit(["-C", checkoutPath, "reset", "--hard", "origin/HEAD"]);
     } catch (error) {
       if (!isMissingPath(error)) throw error;
       await mkdir(path.dirname(checkoutPath), { recursive: true });
-      await runGit(["clone", "--", remoteUrl, checkoutPath]);
+      await this.runGit(["clone", "--", remoteUrl, checkoutPath]);
     }
+  }
+
+  private runGit(args: string[]): Promise<void> {
+    return runGit(this.gitCommand, args);
   }
 }
 
@@ -65,7 +77,6 @@ export class RepositoryProvisioner {
       enabled: true,
       queryable: false,
       allowedPrincipals: input.allowedPrincipals ?? [],
-      embeddingProfile: input.embeddingProfile ?? "default",
       structuralOnly: input.structuralOnly ?? false,
       autoIndex: input.autoIndex ?? false,
       lifecycle: "registered",
@@ -116,12 +127,11 @@ export class RepositoryProvisioner {
 }
 
 function validateRemoteUrl(remoteUrl: string, allowedHosts: Set<string>): string {
-  const parsed = new URL(remoteUrl);
-  if (!["http:", "https:", "ssh:"].includes(parsed.protocol) || parsed.username || parsed.password) {
-    throw new Error("remoteUrl must use http, https, or ssh without embedded credentials");
-  }
-  if (!allowedHosts.has(parsed.hostname.toLowerCase())) {
-    throw new Error(`Git host is not allowed: ${parsed.hostname}`);
+  if (!isValidRemoteUrl(remoteUrl)) throw new Error(REMOTE_URL_MESSAGE);
+  const host = remoteUrlHost(remoteUrl);
+  if (host === undefined) throw new Error(REMOTE_URL_MESSAGE);
+  if (!allowedHosts.has(host)) {
+    throw new Error(`Git host is not allowed: ${host}`);
   }
   return remoteUrl;
 }
@@ -143,17 +153,24 @@ async function ensureCheckoutPathIsSafe(checkoutPath: string, checkoutRoot: stri
   }
 }
 
-function runGit(args: string[]): Promise<void> {
+const GIT_COMMAND_TIMEOUT_MS = 120_000;
+
+function runGit(gitCommand: string, args: string[]): Promise<void> {
   return new Promise((resolve, reject) => {
-    const gitCommand = process.platform === "win32" ? "git.exe" : "/usr/bin/git";
-    const child = spawn(gitCommand, args, { stdio: ["ignore", "ignore", "pipe"] });
+    // Kill (not just signal) after the timeout so a hung clone/fetch cannot wedge startup forever.
+    const child = spawn(gitCommand, args, {
+      stdio: ["ignore", "ignore", "pipe"],
+      timeout: GIT_COMMAND_TIMEOUT_MS,
+      killSignal: "SIGKILL",
+    });
     let stderr = "";
     child.stderr.on("data", (chunk: Buffer) => {
       stderr = (stderr + chunk.toString("utf8")).slice(0, 4_096);
     });
     child.on("error", reject);
-    child.on("close", (code) => {
+    child.on("close", (code, signal) => {
       if (code === 0) resolve();
+      else if (signal === "SIGKILL") reject(new Error(`git command timed out after ${GIT_COMMAND_TIMEOUT_MS}ms`));
       else {
         const details = stderr ? `: ${stderr}` : "";
         reject(new Error(`git command failed with code ${code}${details}`));

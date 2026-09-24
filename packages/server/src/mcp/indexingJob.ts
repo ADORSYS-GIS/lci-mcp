@@ -6,9 +6,13 @@ import type { Logger } from "../logging.js";
 
 const inFlightByRepositoryId = new Map<string, Promise<void>>();
 
+export function isIndexJobInFlight(repositoryId: string): boolean {
+  return inFlightByRepositoryId.has(repositoryId);
+}
+
 export function startBackgroundIndexJob(logger: Logger, repositoryId: string, job: () => Promise<void>): void {
   if (inFlightByRepositoryId.has(repositoryId)) {
-    throw new Error(`indexing is already in progress for repository: ${repositoryId}`);
+    throw new Error(`repository indexing already in progress: ${repositoryId}`);
   }
   const inFlight = job().catch((err) => {
     logger.error("background indexing job failed", {

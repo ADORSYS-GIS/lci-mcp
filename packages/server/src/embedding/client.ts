@@ -231,7 +231,7 @@ function parseLengthError(error: unknown): LengthLimit | undefined {
   if (passedTokens && maxTokens) {
     return { kind: "tokens", passed: Number(passedTokens[1]), max: Number(maxTokens[1]) };
   }
-  const chars = /less than (\d+) characters[^]*?Input length: (\d+)/.exec(message);
+  const chars = /less than (\d+) characters[\s\S]*?Input length: (\d+)/.exec(message);
   if (chars) {
     return { kind: "chars", max: Number(chars[1]), passed: Number(chars[2]) };
   }
