@@ -1,8 +1,9 @@
 # ADR-0011: Publish native binaries for every declared target from one runner
 
-- **Status:** Proposed — the "every binary bundled in one package" part of the Decision Outcome
-  below is superseded by [ADR-0014](./0014-restore-per-platform-native-packages.md); the
-  cross-compilation choice and the macOS/Windows pausing reasoning still stand
+- **Status:** Superseded by [ADR-0014](./0014-restore-per-platform-native-packages.md) (the "every
+  binary bundled in one package" part of the Decision Outcome below) and
+  [ADR-0015](./0015-native-per-os-runners-for-macos-and-windows.md) (the cross-compilation choice
+  and the macOS/Windows pausing reasoning)
 - **Date:** 2026-09-03
 - **Deciders:** @leghadjeu-christian
 
