@@ -21,6 +21,11 @@ export interface EmbeddingBatchItem {
   text: string
 }
 
+export interface EmbeddingProgress {
+  totalChunks: number
+  embeddedChunks: number
+}
+
 export interface EmbeddingResult {
   id: number
   vector: Array<number>
@@ -72,6 +77,7 @@ export interface IndexStatus {
   databasePath: string
   revision: RevisionInfo
   stats: IndexStats
+  embedding?: EmbeddingProgress
 }
 
 /** No core counterpart — only ever constructed inside `lib.rs` from `repository::inspect`'s result. */

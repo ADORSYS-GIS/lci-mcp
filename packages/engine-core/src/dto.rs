@@ -81,6 +81,14 @@ pub struct IndexStats {
     pub edges: i64,
 }
 
+/// Embedding progress for a generation that is currently building: how many embeddable chunks exist
+/// and how many already have a vector. Absent when no embedding build is in flight.
+#[derive(Debug, Clone)]
+pub struct EmbeddingProgress {
+    pub total_chunks: i64,
+    pub embedded_chunks: i64,
+}
+
 #[derive(Debug, Clone)]
 pub struct IndexStatus {
     /// `never_ran | in_progress | done | failed`.
@@ -92,4 +100,5 @@ pub struct IndexStatus {
     pub database_path: String,
     pub revision: RevisionInfo,
     pub stats: IndexStats,
+    pub embedding: Option<EmbeddingProgress>,
 }

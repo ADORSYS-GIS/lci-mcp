@@ -5,7 +5,7 @@ use std::path::Path;
 
 use uuid::Uuid;
 
-use crate::dto::{EmbeddingBatchItem, EmbeddingResult, IndexGenerationHandle, IndexStats, IndexStatus, RevisionInfo, StartIndexOptions};
+use crate::dto::{EmbeddingBatchItem, EmbeddingProgress, EmbeddingResult, IndexGenerationHandle, IndexStats, IndexStatus, RevisionInfo, StartIndexOptions};
 use crate::error::EngineError;
 use crate::store::SqliteStore;
 use crate::{extractor, lease, repository};
@@ -118,6 +118,14 @@ fn generation_stats(store: &SqliteStore, generation_id: &str) -> anyhow::Result<
     })
 }
 
+fn embedding_progress(store: &SqliteStore, generation_id: &str) -> anyhow::Result<EmbeddingProgress> {
+    store.with_conn(|conn| {
+        let total = crate::store::chunks::count_embeddable(conn, generation_id)?;
+        let pending = crate::store::chunks::all_chunk_ids_needing_embeddings(conn, generation_id)?;
+        Ok(EmbeddingProgress { total_chunks: total, embedded_chunks: total - pending })
+    })
+}
+
 /// State vocabulary: `never_ran | in_progress | done | failed`. A `BUILDING` generation takes
 /// priority over an older `ACTIVE` one, so the prior index stays usable while a rebuild runs. A
 /// `FAILED` latest attempt is only reported as `failed` when nothing has ever gone `ACTIVE` —
@@ -137,7 +145,7 @@ pub fn status(
     let active = store.get_active_generation()?;
     let building = store.get_most_recent_generation_in_state("BUILDING")?;
 
-    let (state, usable, indexed_head_sha, stats, stale_extra) = if let Some(building) = &building {
+    let (state, usable, indexed_head_sha, stats, stale_extra, embedding) = if let Some(building) = &building {
         let stats = match &active {
             Some(active) => generation_stats(store, &active.id)?,
             None => IndexStats { files: 0, chunks: 0, nodes: 0, edges: 0 },
@@ -152,6 +160,7 @@ pub fn status(
                 building.embedding_fingerprint.as_deref(),
                 expected_embedding_fingerprint,
             ),
+            Some(embedding_progress(store, &building.id)?),
         )
     } else if let Some(active) = &active {
         let stats = generation_stats(store, &active.id)?;
@@ -160,11 +169,11 @@ pub fn status(
             active.embedding_fingerprint.as_deref(),
             expected_embedding_fingerprint,
         );
-        ("done".to_string(), true, Some(active.head_sha.clone()), stats, extra)
+        ("done".to_string(), true, Some(active.head_sha.clone()), stats, extra, None)
     } else if store.get_most_recent_generation_in_state("FAILED")?.is_some() {
-        ("failed".to_string(), false, None, IndexStats { files: 0, chunks: 0, nodes: 0, edges: 0 }, vec![])
+        ("failed".to_string(), false, None, IndexStats { files: 0, chunks: 0, nodes: 0, edges: 0 }, vec![], None)
     } else {
-        ("never_ran".to_string(), false, None, IndexStats { files: 0, chunks: 0, nodes: 0, edges: 0 }, vec![])
+        ("never_ran".to_string(), false, None, IndexStats { files: 0, chunks: 0, nodes: 0, edges: 0 }, vec![], None)
     };
 
     let mut stale_reasons = stale_extra;
@@ -189,6 +198,7 @@ pub fn status(
             dirty: repo_info.dirty,
         },
         stats,
+        embedding,
     })
 }
 

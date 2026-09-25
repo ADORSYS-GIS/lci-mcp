@@ -222,6 +222,19 @@ impl From<core::IndexStats> for IndexStats {
 
 #[napi(object)]
 #[derive(Debug, Clone)]
+pub struct EmbeddingProgress {
+    pub total_chunks: i64,
+    pub embedded_chunks: i64,
+}
+
+impl From<core::EmbeddingProgress> for EmbeddingProgress {
+    fn from(v: core::EmbeddingProgress) -> Self {
+        Self { total_chunks: v.total_chunks, embedded_chunks: v.embedded_chunks }
+    }
+}
+
+#[napi(object)]
+#[derive(Debug, Clone)]
 pub struct IndexStatus {
     /// `never_ran | in_progress | done | failed`.
     pub state: String,
@@ -232,6 +245,7 @@ pub struct IndexStatus {
     pub database_path: String,
     pub revision: RevisionInfo,
     pub stats: IndexStats,
+    pub embedding: Option<EmbeddingProgress>,
 }
 
 impl From<core::IndexStatus> for IndexStatus {
@@ -245,6 +259,7 @@ impl From<core::IndexStatus> for IndexStatus {
             database_path: v.database_path,
             revision: v.revision.into(),
             stats: v.stats.into(),
+            embedding: v.embedding.map(Into::into),
         }
     }
 }
