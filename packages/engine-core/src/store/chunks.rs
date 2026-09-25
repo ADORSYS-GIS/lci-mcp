@@ -160,3 +160,13 @@ pub fn all_chunk_ids_needing_embeddings(conn: &Connection, generation_id: &str) 
         |r| r.get(0),
     )?)
 }
+
+/// Total chunks eligible for embedding in a generation (those with `embed_input` set), regardless of
+/// whether they already have a vector — the denominator for embedding progress.
+pub fn count_embeddable(conn: &Connection, generation_id: &str) -> anyhow::Result<i64> {
+    Ok(conn.query_row(
+        "SELECT COUNT(*) FROM chunks WHERE generation_id = ?1 AND embed_input IS NOT NULL",
+        [generation_id],
+        |r| r.get(0),
+    )?)
+}

@@ -42,8 +42,49 @@ describe("resolveConfig precedence", () => {
     const config = resolveConfig([]);
     expect(config.embedding.batchSize).toBe(64);
     expect(config.storage.database).toBe("{{dataDir}}/lci-mcp/{{repoKey}}/index.sqlite");
+    expect(config.storage.catalog).toBe("{{dataDir}}/lci-mcp/catalog.json");
+    expect(config.storage.indexRoot).toBe("{{dataDir}}/lci-mcp/repos");
     expect(config.index.autoIndex).toBe(false);
+    expect(config.index.maxConcurrentRepositories).toBe(2);
+    expect(config.repositories).toEqual([]);
     expect(config.logging.level).toBe("info");
+  });
+
+  it("accepts a repository manifest without exposing checkout paths in its safe summary", () => {
+    const config = resolveConfig([
+      {
+        name: "file",
+        value: {
+          repositories: [
+            {
+              repositoryId: "repo-a",
+              displayName: "Repository A",
+              remoteUrl: "https://git.example.test/team/repo-a",
+              checkoutPath: "/var/lib/lci/checkouts/repo-a",
+            },
+          ],
+        },
+      },
+    ]);
+    expect(config.repositories[0]?.repositoryId).toBe("repo-a");
+  });
+
+  it("rejects duplicate IDs and relative checkout paths", () => {
+    const entry = {
+      repositoryId: "repo-a",
+      displayName: "Repository A",
+      remoteUrl: "https://git.example.test/team/repo-a",
+      checkoutPath: "/var/lib/lci/checkouts/repo-a",
+    };
+    expect(() => resolveConfig([{ name: "file", value: { repositories: [entry, entry] } }])).toThrow(
+      "duplicate repository IDs",
+    );
+    expect(() =>
+      resolveConfig([{ name: "file", value: { repositories: [{ ...entry, checkoutPath: "repo-a" }] } }]),
+    ).toThrow("checkoutPath must be absolute");
+    expect(() => resolveConfig([{ name: "file", value: { storage: { catalog: "catalog.json" } } }])).toThrow(
+      "catalog must be absolute or use a template",
+    );
   });
 
   it("rejects an unknown top-level key (schema is .strict())", () => {

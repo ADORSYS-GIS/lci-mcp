@@ -2,7 +2,7 @@
 /* eslint-disable */
 export declare class CodeIndex {
   static open(options: OpenIndexOptions): Promise<CodeIndex>
-  status(): Promise<IndexStatus>
+  status(expectedEmbeddingFingerprint?: string | undefined | null): Promise<IndexStatus>
   beginIndex(options: StartIndexOptions): Promise<IndexGenerationHandle>
   nextEmbeddingBatch(generationId: string, limit: number): Promise<Array<EmbeddingBatchItem>>
   putEmbeddings(generationId: string, values: Array<EmbeddingResult>, dimensions: number): Promise<void>
@@ -19,6 +19,11 @@ export declare class CodeIndex {
 export interface EmbeddingBatchItem {
   id: number
   text: string
+}
+
+export interface EmbeddingProgress {
+  totalChunks: number
+  embeddedChunks: number
 }
 
 export interface EmbeddingResult {
@@ -72,6 +77,7 @@ export interface IndexStatus {
   databasePath: string
   revision: RevisionInfo
   stats: IndexStats
+  embedding?: EmbeddingProgress
 }
 
 /** No core counterpart — only ever constructed inside `lib.rs` from `repository::inspect`'s result. */

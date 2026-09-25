@@ -4,12 +4,18 @@ import path from "node:path";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 
 import { AuthHeaderCache } from "./auth/cache.js";
+import type { RepositoryCatalogRecord } from "./catalog/schema.js";
+import { toSafeRepositorySummary } from "./catalog/schema.js";
+import { RepositoryCatalogStore } from "./catalog/store.js";
+import { RepositoryWorkerRegistry } from "./catalog/workerRegistry.js";
 import { loadConfig } from "./config/load.js";
-import type { AuthHelperConfig } from "./config/schema.js";
+import { type AuthHelperConfig, toSafeRepositoryConfig } from "./config/schema.js";
 import { buildTemplateContext, expandTemplate } from "./config/template.js";
+import { stageDocumentSources } from "./documentSources.js";
 import { EmbeddingClient } from "./embedding/client.js";
 import { CodeIndex } from "./engine.js";
 import { Logger } from "./logging.js";
+import { waitForBackgroundIndexJob } from "./mcp/indexingJob.js";
 import { createServer } from "./mcp/server.js";
 import { isUnsafeIndexRoot } from "./rootSafety.js";
 
@@ -142,6 +148,8 @@ async function main(): Promise<void> {
   });
   const templateContext = await buildTemplateContext(repoRoot);
   const databasePath = expandTemplate(config.storage.database, templateContext);
+  const catalogPath = expandTemplate(config.storage.catalog, templateContext);
+  const indexRoot = expandTemplate(config.storage.indexRoot, templateContext);
 
   if (args.subcommand === "config-show") {
     process.stdout.write(
@@ -164,7 +172,13 @@ async function main(): Promise<void> {
                     : { type: "none" },
               }
             : undefined,
-          storage: { template: config.storage.database, resolved: databasePath },
+          storage: {
+            template: config.storage.database,
+            resolved: databasePath,
+            catalog: catalogPath,
+            indexRoot,
+          },
+          repositories: config.repositories.map(toSafeRepositoryConfig),
           logging: config.logging,
         },
         null,
@@ -183,7 +197,34 @@ async function main(): Promise<void> {
   const logger = new Logger(config.logging.level);
   logger.info("starting", { repoRoot, databasePath });
 
-  const codeIndex = await CodeIndex.open({ repository: repoRoot, database: databasePath });
+  // filename → source URL per document repository, kept in memory (recomputed each startup from
+  // staging) and attached to summaries at list time so citations can link back to the document.
+  const documentLinksByRepo = new Map<string, Record<string, string>>();
+  if (config.documentSources.length > 0) {
+    const staged = await stageDocumentSources(config.documentSources, indexRoot, { logger });
+    for (const { entry, links } of staged) {
+      config.repositories.push(entry);
+      if (Object.keys(links).length > 0) documentLinksByRepo.set(entry.repositoryId, links);
+    }
+  }
+
+  const multiRepository = config.repositories.length > 0;
+
+  // Apply the same home-directory / filesystem-root refusal to every manifest checkoutPath that the
+  // CLI already enforces for --root. Without this, a checkoutPath of "~" or "/" would be indexed and
+  // served, exposing SSH keys, dotfiles, and unrelated checkouts.
+  const unsafeRepository = config.repositories.find((entry) => isUnsafeIndexRoot(entry.checkoutPath));
+  if (unsafeRepository) {
+    process.stderr.write(
+      `lci-mcp: refusing to index repository "${unsafeRepository.repositoryId}" — its checkoutPath "${unsafeRepository.checkoutPath}" resolves to a home directory or filesystem root. Point it at a specific repository directory instead.\n`,
+    );
+    process.exitCode = 1;
+    return;
+  }
+
+  const codeIndex = multiRepository
+    ? undefined
+    : await CodeIndex.open({ repository: repoRoot, database: databasePath });
 
   const authHelperConfig = config.embedding.auth.helper;
   const authCache = authHelperConfig
@@ -197,6 +238,8 @@ async function main(): Promise<void> {
         dimensions: config.embedding.dimensions,
         requestTimeoutMs: config.embedding.requestTimeoutMs,
         maxRetries: config.embedding.maxRetries,
+        maxInputTokens: config.embedding.maxInputTokens,
+        maxInputChars: config.embedding.maxInputChars,
         logger,
         headersProvider: async () => {
           const headers: Record<string, string> = {};
@@ -213,8 +256,77 @@ async function main(): Promise<void> {
       })
     : undefined;
 
-  const server = createServer({ codeIndex, embeddingClient, config, logger, repoRoot, databasePath });
+  const catalog = new RepositoryCatalogStore(catalogPath);
+  if (multiRepository) {
+    // Reconcile every boot so manifest edits (renames, removals) take effect and repositories dropped
+    // from the manifest stop being queryable. New repositories start non-queryable and only become
+    // queryable once an index run completes.
+    const now = new Date().toISOString();
+    const desired: RepositoryCatalogRecord[] = config.repositories.map((entry) => ({
+      ...entry,
+      queryable: false,
+      lifecycle: "registered",
+      createdAt: now,
+      updatedAt: now,
+    }));
+    await catalog.reconcileManifest(desired);
+  }
+
+  let workerRegistry: RepositoryWorkerRegistry | undefined;
+  let defaultRepositoryId: string | undefined;
+  let allowImplicitRepository = true;
+  let listRepositories: (() => Promise<ReturnType<typeof toSafeRepositorySummary>[]>) | undefined;
+  if (multiRepository) {
+    workerRegistry = new RepositoryWorkerRegistry({
+      catalog,
+      storageRoot: indexRoot,
+      maxWorkers: config.index.maxConcurrentRepositories,
+      factory: async (repository, repositoryDatabasePath) => {
+        // Defense in depth: never open an index on a home/root checkout, even if one somehow reaches the catalog.
+        if (isUnsafeIndexRoot(repository.checkoutPath)) {
+          throw new Error(`repository checkout path is unsafe to index: ${repository.repositoryId}`);
+        }
+        return {
+          codeIndex: await CodeIndex.open({ repository: repository.checkoutPath, database: repositoryDatabasePath }),
+          // A structural-only repository must never receive an embedding client, or it would be
+          // re-embedded and answer semantic queries it was explicitly opted out of.
+          embeddingClient: repository.structuralOnly ? undefined : embeddingClient,
+        };
+      },
+    });
+    defaultRepositoryId = undefined;
+    allowImplicitRepository = false;
+    listRepositories = async () => {
+      const document = await catalog.load();
+      const visible = document.repositories.filter((record) => record.lifecycle !== "removed");
+      return visible.map((record) => {
+        const summary = toSafeRepositorySummary(record);
+        const links = documentLinksByRepo.get(record.repositoryId);
+        return links ? { ...summary, documentLinks: links } : summary;
+      });
+    };
+  }
+
+  const baseContext = {
+    codeIndex,
+    embeddingClient,
+    config,
+    logger,
+    repoRoot,
+    databasePath,
+    workerRegistry,
+    catalog: multiRepository ? catalog : undefined,
+    defaultRepositoryId,
+    allowImplicitRepository,
+    listRepositories,
+  };
+  const server = createServer(baseContext);
   const transport = new StdioServerTransport();
+  const shutdown = () => {
+    void Promise.all([workerRegistry?.closeAll(), waitForBackgroundIndexJob()]).finally(() => process.exit(0));
+  };
+  process.once("SIGINT", shutdown);
+  process.once("SIGTERM", shutdown);
   await server.connect(transport);
   logger.info("MCP server ready");
 }

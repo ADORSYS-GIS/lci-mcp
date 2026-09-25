@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 
-import { type LciConfig, LciConfigSchema } from "./schema.js";
+import { type LciConfig, LciConfigSchema, validateRepositoryManifest } from "./schema.js";
 
 // Precedence chain, lowest to highest priority. Expressed as an ordered list of layers rather than
 // an imperative if/else chain, so the merge order itself is a data structure that can be unit
@@ -42,7 +42,7 @@ export function resolveConfig(layers: ConfigLayer[]): LciConfig {
       `lci-mcp: invalid configuration (layer chain: ${layers.map((l) => l.name).join(" -> ")}): ${parsed.error.message}`,
     );
   }
-  return parsed.data;
+  return { ...parsed.data, repositories: validateRepositoryManifest(parsed.data.repositories) };
 }
 
 function readJsonFile(filePath: string): unknown {
