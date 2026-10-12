@@ -10,11 +10,11 @@ export function registerIndexTool(server: McpServer, ctx: AppContext): void {
     "lci_index",
     {
       description:
-        "Indexes or reindexes the current repository. Returns once structural extraction completes; " +
-        "if embeddings are configured, they continue building in the background — poll lci_index_status " +
-        "for completion. Never destroys the previously active index on failure. Rejected while a " +
-        "previous call from this process is still building — poll lci_index_status and retry once it " +
-        "reports done.",
+        "Indexes or reindexes the current repository. Returns immediately once the build starts — " +
+        "structural extraction and, if embeddings are configured, embedding both happen in the " +
+        "background regardless of repository size. Poll lci_index_status for completion. Never " +
+        "destroys the previously active index on failure. Rejected while a previous call from this " +
+        "process is still building — poll lci_index_status and retry once it reports done.",
       inputSchema: {},
     },
     async () => {
@@ -22,25 +22,39 @@ export function registerIndexTool(server: McpServer, ctx: AppContext): void {
         ? `${ctx.config.embedding.model}:${ctx.config.embedding.dimensions ?? "default"}`
         : undefined;
 
-      const handle = await ctx.codeIndex.beginIndex({
+      const handle = await ctx.codeIndex.beginGeneration({
         embeddingFingerprint,
         embeddingDimensions: ctx.config.embedding.dimensions,
       });
 
-      if (!ctx.embeddingClient) {
-        await ctx.codeIndex.commitIndex(handle.generationId);
-        return textResult({ generationId: handle.generationId, state: "done" });
-      }
-
-      startBackgroundIndexJob(ctx.logger, () => runEmbeddingLoopAndCommit(ctx, handle.generationId));
+      startBackgroundIndexJob(ctx.logger, () => extractThenEmbedAndCommit(ctx, handle.generationId));
       return textResult({ generationId: handle.generationId, state: "in_progress" });
     },
   );
 }
 
+export async function extractThenEmbedAndCommit(ctx: AppContext, generationId: string): Promise<void> {
+  try {
+    await ctx.codeIndex.runStructuralExtraction(generationId);
+  } catch (err) {
+    // The engine already marked the generation FAILED and released its lease on this path — unlike
+    // the commit paths below, there is nothing left for this layer to do but record it.
+    const reason = err instanceof Error ? err.message : String(err);
+    ctx.logger.error("structural extraction failed", { generationId, reason });
+    return;
+  }
+
+  if (!ctx.embeddingClient) {
+    await commitOrFail(ctx, generationId, () => ctx.codeIndex.commitIndex(generationId));
+    return;
+  }
+
+  await runEmbeddingLoopAndCommit(ctx, generationId);
+}
+
 async function runEmbeddingLoopAndCommit(ctx: AppContext, generationId: string): Promise<void> {
   const batchSize = ctx.config.embedding.batchSize;
-  try {
+  await commitOrFail(ctx, generationId, async () => {
     for (;;) {
       const batch = await ctx.codeIndex.nextEmbeddingBatch(generationId, batchSize);
       if (batch.length === 0) break;
@@ -53,6 +67,17 @@ async function runEmbeddingLoopAndCommit(ctx: AppContext, generationId: string):
       );
     }
     await ctx.codeIndex.commitIndex(generationId);
+  });
+}
+
+/**
+ * Runs `work` through to a committed generation, logging success; any rejection is routed through
+ * `failIndex` so the generation always leaves `BUILDING` — for a commit failure, not just an
+ * embedding one — and its lease is released rather than left held until the lease TTL expires.
+ */
+async function commitOrFail(ctx: AppContext, generationId: string, work: () => Promise<void>): Promise<void> {
+  try {
+    await work();
     ctx.logger.info("index generation committed", { generationId });
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);

@@ -72,15 +72,24 @@ impl CodeIndex {
     }
 
     #[napi]
-    pub async fn begin_index(&self, options: StartIndexOptions) -> Result<IndexGenerationHandle> {
-        // Not wrapped in `blocking()`: `index_coordinator::begin_index` is itself `async` and already
-        // pushes the one genuinely expensive step (the tree-sitter walk, inside `extractor::extract`)
-        // onto `spawn_blocking` — wrapping this whole call in another `spawn_blocking` would mean
-        // calling `block_on` from within a blocking-pool thread just to re-enter the async runtime,
-        // which works but adds a needless nested-runtime hop for no benefit.
-        index_coordinator::begin_index(&self.store, &self.repo_root, &self.owner_token, &options.into())
+    pub async fn begin_generation(&self, options: StartIndexOptions) -> Result<IndexGenerationHandle> {
+        let store = Arc::clone(&self.store);
+        let repo_root = self.repo_root.clone();
+        let owner_token = self.owner_token.clone();
+        let options: lci_mcp_engine_core::dto::StartIndexOptions = options.into();
+        blocking(move || index_coordinator::prepare_generation(&store, &repo_root, &owner_token, &options).map(Into::into)).await
+    }
+
+    #[napi]
+    pub async fn run_structural_extraction(&self, generation_id: String) -> Result<()> {
+        // Not wrapped in `blocking()`: `index_coordinator::run_structural_extraction` is itself
+        // `async` and already pushes the one genuinely expensive step (the tree-sitter walk, inside
+        // `extractor::extract`) onto `spawn_blocking` — wrapping this whole call in another
+        // `spawn_blocking` would mean calling `block_on` from within a blocking-pool thread just to
+        // re-enter the async runtime, which works but adds a needless nested-runtime hop for no
+        // benefit.
+        index_coordinator::run_structural_extraction(&self.store, &self.repo_root, &generation_id, &self.owner_token)
             .await
-            .map(Into::into)
             .map_err(Error::from)
     }
 
@@ -131,7 +140,7 @@ impl CodeIndex {
         blocking(move || {
             let active = store
                 .get_active_generation()?
-                .ok_or_else(|| anyhow::anyhow!("no active index generation — call beginIndex/commitIndex first"))?;
+                .ok_or_else(|| anyhow::anyhow!("no active index generation — call lci_index and wait for it to commit"))?;
             let hits = store.with_conn(|conn| lci_mcp_engine_core::store::vectors::search(conn, &active.id, &input))?;
             Ok(hits.into_iter().map(Into::into).collect())
         })
@@ -197,5 +206,5 @@ impl CodeIndex {
 fn active_generation(store: &SqliteStore) -> anyhow::Result<lci_mcp_engine_core::store::GenerationRow> {
     store
         .get_active_generation()?
-        .ok_or_else(|| anyhow::anyhow!("no active index generation — call beginIndex/commitIndex first"))
+        .ok_or_else(|| anyhow::anyhow!("no active index generation — call lci_index and wait for it to commit"))
 }

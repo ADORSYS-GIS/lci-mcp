@@ -47,31 +47,32 @@ HTTP call — happens *inside* that single process, never as a separate service.
 
 ### Indexing flow
 
-`lci_index` runs in two strictly sequential phases, never concurrently: the **whole** repository is
-parsed and persisted first, and only once that structural pass fully commits does embedding start,
-batch by batch. That's also why the tool call can return before indexing is fully done — structural
-data is already queryable the moment it returns, while embeddings (if configured at all) keep
-building in the background.
+`lci_index` returns immediately, regardless of repository size — creating the `BUILDING` generation
+is the only thing it waits on. Both the tree-sitter walk and, if embeddings are configured,
+embedding every chunk happen afterward in the background, one phase strictly after the other
+(structural extraction fully commits before embedding starts). Poll `lci_index_status` for
+completion; the previous index stays fully queryable the entire time.
 
 ```mermaid
 flowchart TD
-    Start(["lci_index called"]) --> Inspect["Inspect repository<br/>HEAD sha · dirty flag · repoKey"]
-    Inspect --> Walk["Tree-sitter walk<br/>(lci-codegraph)"]
+    Start(["lci_index called"]) --> Prepare["Create BUILDING generation<br/>(fast — no file walk)"]
+    Prepare --> ReturnProg(["Returns: in_progress"])
+
+    ReturnProg -.background job.-> Walk["Tree-sitter walk<br/>(lci-codegraph)"]
     Walk --> Persist["Persist chunks + graph<br/>(one transaction)"]
     Persist --> Correlate["Correlate chunks<br/>to graph nodes"]
     Correlate --> HasEmb{"Embeddings<br/>configured?"}
 
     HasEmb -- "No" --> CommitA["commitIndex"]
-    CommitA --> DoneA(["Returns: done"])
-
-    HasEmb -- "Yes" --> ReturnProg(["Returns: in_progress<br/>(structural data already queryable)"])
-    ReturnProg --> Batch["Pull next batch of<br/>un-embedded chunks"]
+    HasEmb -- "Yes" --> Batch["Pull next batch of<br/>un-embedded chunks"]
     Batch --> Empty{"Any chunks<br/>left?"}
     Empty -- "Yes" --> Post["POST /embeddings<br/>(one request per batch)"]
     Post --> Put["Store vectors<br/>in chunk_vectors"]
     Put --> Batch
     Empty -- "No" --> CommitB["commitIndex"]
-    CommitB --> DoneB(["lci_index_status polls to done"])
+
+    CommitA --> Done(["lci_index_status polls to done"])
+    CommitB --> Done
 ```
 
 A failed or in-flight reindex never disturbs the previous index — generations only ever swap over
