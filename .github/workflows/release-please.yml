@@ -34,7 +34,13 @@ jobs:
         id: release
         uses: googleapis/release-please-action@v5
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          # GitHub suppresses pull_request/push events for anything authored with the default
+          # GITHUB_TOKEN, so a release PR opened with it would carry no CI checks at all — the same
+          # recursion-prevention rule the publish job below works around for its own tag push. A
+          # fine-grained PAT (repo contents: write, pull requests: write) scoped to this repo and
+          # stored as RELEASE_PLEASE_TOKEN gives the release PR a real author identity instead, so
+          # engine.yml/server.yml run against it like any other PR.
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
