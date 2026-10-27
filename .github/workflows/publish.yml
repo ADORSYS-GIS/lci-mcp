@@ -52,8 +52,10 @@ jobs:
         include:
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
+            container: quay.io/pypa/manylinux_2_28_x86_64
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-24.04-arm
+            container: quay.io/pypa/manylinux_2_28_aarch64
           - target: x86_64-apple-darwin
             os: macos-15-intel
           - target: aarch64-apple-darwin
@@ -61,6 +63,10 @@ jobs:
           - target: x86_64-pc-windows-msvc
             os: windows-latest
     runs-on: ${{ matrix.os }}
+    # The Linux legs build inside manylinux_2_28, whose glibc 2.28 is also Node 24's own floor, so
+    # the binary links against the oldest glibc any supported Node install can have rather than the
+    # runner's.
+    container: ${{ matrix.container }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -93,6 +99,27 @@ jobs:
         # needed, and every C dependency (rusqlite's bundled SQLite, git2's vendored libgit2) sees
         # the real platform toolchain it was written against.
         run: pnpm exec napi build --platform --release --target ${{ matrix.target }}
+
+      - name: Verify the binary stays within the glibc baseline
+        if: runner.os == 'Linux'
+        working-directory: packages/engine
+        # Fails closed: a binary whose required glibc version can't be read is rejected, not passed.
+        env:
+          GLIBC_BASELINE: "2.28"
+        run: |
+          set -euo pipefail
+          for binary in *.node; do
+            highest="$(objdump -T "$binary" | grep -oE 'GLIBC_[0-9]+(\.[0-9]+)+' | sed 's/^GLIBC_//' | sort -V | tail -1 || true)"
+            if [ -z "$highest" ]; then
+              echo "::error::$binary has no versioned glibc symbols to check against the $GLIBC_BASELINE baseline"
+              exit 1
+            fi
+            echo "$binary requires up to GLIBC_$highest"
+            if [ "$(printf '%s\n%s\n' "$GLIBC_BASELINE" "$highest" | sort -V | tail -1)" != "$GLIBC_BASELINE" ]; then
+              echo "::error::$binary requires GLIBC_$highest, newer than the $GLIBC_BASELINE baseline"
+              exit 1
+            fi
+          done
 
       - name: Verify the native binding actually loads
         # Runs on the same architecture the binding was just built for, so a binary that builds but
