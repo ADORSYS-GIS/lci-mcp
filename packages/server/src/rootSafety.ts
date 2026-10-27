@@ -18,7 +18,7 @@ function canonicalize(target: string): string {
 /** True when `ancestor` is a strict parent of `descendant`, compared by whole path segments. */
 function isAncestorOf(ancestor: string, descendant: string): boolean {
   const relative = path.relative(ancestor, descendant);
-  return relative !== "" && !relative.startsWith("..") && !path.isAbsolute(relative);
+  return relative !== "" && relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
 }
 
 /**
@@ -32,7 +32,7 @@ function homeDirectories(): string[] {
   } catch {
     // An account without a database entry, such as an arbitrary container UID, has only `$HOME`.
   }
-  return homes.map(canonicalize);
+  return homes.filter(Boolean).map(canonicalize);
 }
 
 /**

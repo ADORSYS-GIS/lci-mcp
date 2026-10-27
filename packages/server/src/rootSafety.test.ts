@@ -1,4 +1,4 @@
-import { mkdtempSync, realpathSync, rmSync, symlinkSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync } from "node:fs";
 import { homedir, tmpdir, userInfo } from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
@@ -63,6 +63,23 @@ describe("isUnsafeIndexRoot", () => {
     it("does not flag a repository outside the home directory", () => {
       vi.stubEnv("HOME", missingHome);
       expect(isUnsafeIndexRoot(scratch)).toBe(false);
+    });
+  });
+
+  describe("with an unusual $HOME", () => {
+    afterEach(() => vi.unstubAllEnvs());
+
+    it("does not treat an empty $HOME as the working directory", () => {
+      vi.stubEnv("HOME", "");
+      expect(isUnsafeIndexRoot(path.dirname(process.cwd()))).toBe(false);
+    });
+
+    it("flags the parent of a home directory whose name starts with dots", () => {
+      const parent = path.join(scratch, "homes");
+      const home = path.join(parent, "..profile");
+      mkdirSync(home, { recursive: true });
+      vi.stubEnv("HOME", home);
+      expect(isUnsafeIndexRoot(parent)).toBe(true);
     });
   });
 });
