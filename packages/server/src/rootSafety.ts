@@ -1,5 +1,5 @@
 import { realpathSync } from "node:fs";
-import { homedir } from "node:os";
+import { homedir, userInfo } from "node:os";
 import path from "node:path";
 
 /**
@@ -22,6 +22,20 @@ function isAncestorOf(ancestor: string, descendant: string): boolean {
 }
 
 /**
+ * The home directory as both `$HOME` and the account database report it, so a `$HOME` that points
+ * somewhere stale or unresolvable cannot hide the account's real home.
+ */
+function homeDirectories(): string[] {
+  const homes = [homedir()];
+  try {
+    homes.push(userInfo().homedir);
+  } catch {
+    // An account without a database entry, such as an arbitrary container UID, has only `$HOME`.
+  }
+  return homes.map(canonicalize);
+}
+
+/**
  * True when `root` resolves to a filesystem root, to the user's home directory, or to any directory
  * containing that home directory. Indexing any of them would walk far more of the host than any
  * single repository, well beyond what the ignore layers in the extraction engine are meant to filter
@@ -36,6 +50,5 @@ export function isUnsafeIndexRoot(root: string): boolean {
   const resolved = canonicalize(root);
   if (resolved === path.parse(resolved).root) return true;
 
-  const home = canonicalize(homedir());
-  return resolved === home || isAncestorOf(resolved, home);
+  return homeDirectories().some((home) => resolved === home || isAncestorOf(resolved, home));
 }

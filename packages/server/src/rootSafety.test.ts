@@ -1,7 +1,7 @@
 import { mkdtempSync, realpathSync, rmSync, symlinkSync } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { homedir, tmpdir, userInfo } from "node:os";
 import path from "node:path";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { isUnsafeIndexRoot } from "./rootSafety.js";
 
 const scratch = mkdtempSync(path.join(realpathSync.native(tmpdir()), "lci-root-safety-"));
@@ -49,5 +49,20 @@ describe("isUnsafeIndexRoot", () => {
 
   it("does not flag the home directory reached back through a child", () => {
     expect(isUnsafeIndexRoot(path.join(homedir(), "projects", "..", "projects"))).toBe(false);
+  });
+
+  describe("when $HOME does not resolve", () => {
+    const missingHome = `${scratch}-missing-home`;
+    afterEach(() => vi.unstubAllEnvs());
+
+    it("still flags the account's home directory", () => {
+      vi.stubEnv("HOME", missingHome);
+      expect(isUnsafeIndexRoot(userInfo().homedir)).toBe(true);
+    });
+
+    it("does not flag a repository outside the home directory", () => {
+      vi.stubEnv("HOME", missingHome);
+      expect(isUnsafeIndexRoot(scratch)).toBe(false);
+    });
   });
 });
