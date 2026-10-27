@@ -81,6 +81,13 @@ jobs:
         with:
           shared-key: release-${{ matrix.target }}
 
+      - name: Provide npm inside the build container
+        # The manylinux images ship no Node, and pnpm/action-setup installs pnpm through npm.
+        if: matrix.container
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
       - name: Install pnpm
         uses: pnpm/action-setup@v6
 
